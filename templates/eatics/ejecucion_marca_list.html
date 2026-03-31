@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Ejecución Marca — Eatics{% endblock %}
+{% block topbar_title %}Ejecución por marca{% endblock %}
+
+{% block content %}
+<div class="stats-row">
+    <div class="stat-card">
+        <div class="stat-label">Total registros</div>
+        <div class="stat-value">{{ "{:,}".format(total) }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Página</div>
+        <div class="stat-value">{{ page }} / {{ total_pages }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Por página</div>
+        <div class="stat-value">{{ page_size }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Mostrando</div>
+        <div class="stat-value">{{ registros|length }}</div>
+    </div>
+</div>
+
+<form class="filter-bar" method="get">
+    <input type="text" name="q" value="{{ q or '' }}" placeholder="Buscar promotor, marca, supervisor...">
+    <input type="text" name="marca" value="{{ marca or '' }}" placeholder="Marca...">
+    <input type="text" name="supervisor" value="{{ supervisor or '' }}" placeholder="Supervisor...">
+    <button type="submit" class="btn-filter">Filtrar</button>
+    <a href="/eatics/ejecucion-marca" class="btn-clear">Limpiar</a>
+</form>
+
+<div class="card-clean">
+    <div class="card-clean-header">
+        <h6>Ejecución por marca</h6>
+    </div>
+    <table class="data-table">
+        <thead>
+        <tr>
+            <th>ID</th>
+            <th>Marca</th>
+            <th>Promotor</th>
+            <th>Supervisor</th>
+            <th>Fecha</th>
+            <th>SKUs</th>
+            <th>Agotados</th>
+            <th>Planograma</th>
+            <th>Degustación</th>
+            <th>Status</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for item in registros %}
+        <tr>
+            <td><a href="/eatics/ejecucion-marca/{{ item.id }}">#{{ item.id }}</a></td>
+            <td>{{ item.nombre_marca or '—' }}</td>
+            <td>{{ item.user_real_name or '—' }}</td>
+            <td>{{ item.supervisor or '—' }}</td>
+            <td>{{ item.fecha.strftime('%d/%m/%Y') if item.fecha else '—' }}</td>
+            <td>{{ item.cant_sku or 0 }}</td>
+            <td>
+                {% if item.cant_agotados and item.cant_agotados > 0 %}
+                <span class="badge-status badge-warn">{{ item.cant_agotados }}</span>
+                {% else %}
+                <span class="badge-status badge-ok">0</span>
+                {% endif %}
+            </td>
+            <td>
+          <span class="badge-status {{ 'badge-ok' if item.planograma else 'badge-no' }}">
+            {{ 'Sí' if item.planograma else 'No' }}
+          </span>
+            </td>
+            <td>
+          <span class="badge-status {{ 'badge-info' if item.is_degustacion else 'badge-no' }}">
+            {{ 'Sí' if item.is_degustacion else 'No' }}
+          </span>
+            </td>
+            <td>
+          <span class="badge-status {{ 'badge-ok' if item.status else 'badge-no' }}">
+            {{ 'Activo' if item.status else 'Inactivo' }}
+          </span>
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="10" style="text-align:center; padding:32px; color: var(--text-muted);">
+                Sin resultados para los filtros aplicados.
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="pagination-bar">
+        <span>{{ "{:,}".format(total) }} registros en total</span>
+        <div style="display:flex; gap:8px;">
+            <a href="?page={{ page - 1 }}{% if q %}&q={{ q }}{% endif %}{% if marca %}&marca={{ marca }}{% endif %}{% if supervisor %}&supervisor={{ supervisor }}{% endif %}"
+               class="{{ 'disabled' if page <= 1 else '' }}">← Anterior</a>
+            <a href="?page={{ page + 1 }}{% if q %}&q={{ q }}{% endif %}{% if marca %}&marca={{ marca }}{% endif %}{% if supervisor %}&supervisor={{ supervisor }}{% endif %}"
+               class="{{ 'disabled' if page >= total_pages else '' }}">Siguiente →</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

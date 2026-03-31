@@ -1,0 +1,247 @@
+{% extends "base.html" %}
+{% block title %}Reporte Marca — Eatics{% endblock %}
+{% block topbar_title %}Reporte por marca y PDV{% endblock %}
+
+{% block content %}
+
+<style>
+    .kpi-row { display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-bottom:22px; }
+    .kpi { background:#fff; border:1px solid var(--border); border-radius:10px; padding:16px 18px; }
+    .kpi .kpi-label { font-size:10px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--text-muted); margin-bottom:6px; }
+    .kpi .kpi-value { font-size:24px; font-weight:600; font-family:'DM Mono',monospace; color:var(--text); }
+    .kpi .kpi-sub   { font-size:11px; color:var(--text-muted); margin-top:3px; }
+    .kpi.danger .kpi-value { color:#DC2626; }
+    .kpi.warn   .kpi-value { color:#D97706; }
+    .kpi.ok     .kpi-value { color:#16A34A; }
+
+    .filter-card { background:#fff; border:1px solid var(--border); border-radius:10px; padding:16px 20px; margin-bottom:18px; }
+    .filter-card form { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
+    .filter-group { display:flex; flex-direction:column; gap:4px; }
+    .filter-group label { font-size:10px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--text-muted); }
+    .filter-group input,
+    .filter-group select {
+      font-family:'DM Sans',sans-serif; font-size:13px;
+      border:1px solid var(--border); border-radius:7px;
+      padding:7px 12px; background:var(--bg); color:var(--text);
+      outline:none; transition:border-color .15s; min-width:140px;
+    }
+    .filter-group input:focus,
+    .filter-group select:focus { border-color:var(--accent); }
+
+    /* Tabla */
+    .pct-bar { display:flex; align-items:center; gap:8px; }
+    .pct-bar .bar-track { flex:1; height:5px; background:var(--border); border-radius:3px; overflow:hidden; min-width:60px; }
+    .pct-bar .bar-fill  { height:100%; border-radius:3px; }
+    .bar-ok   { background:#16A34A; }
+    .bar-warn { background:#D97706; }
+    .bar-bad  { background:#DC2626; }
+
+    .num { font-family:'DM Mono',monospace; font-size:12px; }
+
+    .toggle-view { display:flex; gap:6px; }
+    .toggle-view button {
+      font-family:'DM Sans',sans-serif; font-size:12px; font-weight:500;
+      padding:5px 14px; border-radius:6px; cursor:pointer;
+      border:1px solid var(--border); background:var(--bg); color:var(--text-muted);
+      transition:all .15s;
+    }
+    .toggle-view button.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+</style>
+
+<!-- KPIs -->
+<div class="kpi-row">
+    <div class="kpi">
+        <div class="kpi-label">PDVs</div>
+        <div class="kpi-value">{{ "{:,}".format(pdvs_unicos) }}</div>
+        <div class="kpi-sub">puntos de venta</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi-label">Visitas</div>
+        <div class="kpi-value">{{ "{:,}".format(total_visitas) }}</div>
+        <div class="kpi-sub">en el periodo</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi-label">Total SKU</div>
+        <div class="kpi-value">{{ "{:,}".format(total_sku) }}</div>
+        <div class="kpi-sub">registrados</div>
+    </div>
+    <div class="kpi {{ 'danger' if pct_agotados_gral > 10 else 'warn' if pct_agotados_gral > 5 else 'ok' }}">
+        <div class="kpi-label">% SKU agotados</div>
+        <div class="kpi-value">{{ pct_agotados_gral }}%</div>
+        <div class="kpi-sub">{{ "{:,}".format(total_agotados) }} SKUs</div>
+    </div>
+    <div class="kpi {{ 'warn' if pct_pre_gral > 5 else 'ok' }}">
+        <div class="kpi-label">% SKU preagotados</div>
+        <div class="kpi-value">{{ pct_pre_gral }}%</div>
+        <div class="kpi-sub">{{ "{:,}".format(total_preagotados) }} SKUs</div>
+    </div>
+</div>
+
+<!-- Filtros -->
+<div class="filter-card">
+    <form method="get">
+        <div class="filter-group">
+            <label>Fecha inicio</label>
+            <input type="date" name="fecha_ini" value="{{ fecha_ini }}">
+        </div>
+        <div class="filter-group">
+            <label>Fecha fin</label>
+            <input type="date" name="fecha_fin" value="{{ fecha_fin }}">
+        </div>
+        <div class="filter-group">
+            <label>Marca</label>
+            <select name="marca">
+                <option value="todas" {% if marca == 'todas' %}selected{% endif %}>Todas las marcas</option>
+                {% for m in marcas_disp %}
+                <option value="{{ m }}" {% if marca == m %}selected{% endif %}>{{ m }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="filter-group">
+            <label>Cadena</label>
+            <select name="cadena">
+                <option value="todas" {% if cadena == 'todas' %}selected{% endif %}>Todas las cadenas</option>
+                {% for cd in cadenas_disp %}
+                <option value="{{ cd }}" {% if cadena == cd %}selected{% endif %}>{{ cd }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn-filter">Aplicar</button>
+        <a href="/reportes/marca-pdv" class="btn-clear">Limpiar</a>
+    </form>
+</div>
+
+<!-- Tabla -->
+<div class="card-clean">
+    <div class="card-clean-header">
+        <h6>Detalle por PDV y marca <span style="font-weight:400;color:var(--text-muted);font-size:12px">— {{ registros|length }} registros</span></h6>
+        <div class="toggle-view">
+            <button class="active" onclick="toggleCols('basico', this)">Básico</button>
+            <button onclick="toggleCols('agotados', this)">Agotados</button>
+            <button onclick="toggleCols('preagotados', this)">Preagotados</button>
+        </div>
+    </div>
+
+    <div style="overflow-x:auto;">
+        <table class="data-table" id="tabla-reporte">
+            <thead>
+            <tr>
+                <!-- Siempre visibles -->
+                <th>Cadena</th>
+                <th>Punto de venta</th>
+                <th>Marca</th>
+                <th>Visitas</th>
+                <th>SKUs</th>
+                <!-- Básico -->
+                <th class="col-basico">Cumple planograma</th>
+                <th class="col-basico">% Planograma</th>
+                <!-- Agotados -->
+                <th class="col-agotados" style="display:none">Visitas c/agotados</th>
+                <th class="col-agotados" style="display:none">% Vis. agotados</th>
+                <th class="col-agotados" style="display:none">SKU agotados</th>
+                <th class="col-agotados" style="display:none">% SKU agotados</th>
+                <!-- Preagotados -->
+                <th class="col-preagotados" style="display:none">Visitas c/preagotados</th>
+                <th class="col-preagotados" style="display:none">% Vis. preagotados</th>
+                <th class="col-preagotados" style="display:none">SKU preagotados</th>
+                <th class="col-preagotados" style="display:none">% SKU preagotados</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for r in registros %}
+            <tr>
+                <td>{{ r.cadena or '—' }}</td>
+                <td>{{ r.punto_venta or '—' }}</td>
+                <td><span class="badge-status badge-info">{{ r.marca or '—' }}</span></td>
+                <td class="num">{{ r.total_visitas or 0 }}</td>
+                <td class="num">{{ r.cant_sku or 0 }}</td>
+
+                <!-- Básico -->
+                <td class="col-basico num">{{ r.cumple_planograma or 0 }}</td>
+                <td class="col-basico">
+                    <div class="pct-bar">
+                        <span class="num">{{ r.pct_planograma or 0 }}%</span>
+                        <div class="bar-track">
+                            <div class="bar-fill {{ 'bar-ok' if (r.pct_planograma or 0) >= 80 else 'bar-warn' if (r.pct_planograma or 0) >= 50 else 'bar-bad' }}"
+                                 style="width:{{ r.pct_planograma or 0 }}%"></div>
+                        </div>
+                    </div>
+                </td>
+
+                <!-- Agotados -->
+                <td class="col-agotados num" style="display:none">{{ r.visitas_con_agotados or 0 }}</td>
+                <td class="col-agotados" style="display:none">
+                    <div class="pct-bar">
+                        <span class="num">{{ r.pct_visitas_agotados or 0 }}%</span>
+                        <div class="bar-track">
+                            <div class="bar-fill {{ 'bar-bad' if (r.pct_visitas_agotados or 0) > 10 else 'bar-warn' if (r.pct_visitas_agotados or 0) > 5 else 'bar-ok' }}"
+                                 style="width:{{ r.pct_visitas_agotados or 0 }}%"></div>
+                        </div>
+                    </div>
+                </td>
+                <td class="col-agotados num" style="display:none">{{ r.cant_sku_agotados or 0 }}</td>
+                <td class="col-agotados" style="display:none">
+                    <div class="pct-bar">
+                        <span class="num">{{ r.pct_sku_agotados or 0 }}%</span>
+                        <div class="bar-track">
+                            <div class="bar-fill {{ 'bar-bad' if (r.pct_sku_agotados or 0) > 10 else 'bar-warn' if (r.pct_sku_agotados or 0) > 5 else 'bar-ok' }}"
+                                 style="width:{{ r.pct_sku_agotados or 0 }}%"></div>
+                        </div>
+                    </div>
+                </td>
+
+                <!-- Preagotados -->
+                <td class="col-preagotados num" style="display:none">{{ r.visitas_con_preagotados or 0 }}</td>
+                <td class="col-preagotados" style="display:none">
+                    <div class="pct-bar">
+                        <span class="num">{{ r.pct_visitas_preagotados or 0 }}%</span>
+                        <div class="bar-track">
+                            <div class="bar-fill {{ 'bar-warn' if (r.pct_visitas_preagotados or 0) > 5 else 'bar-ok' }}"
+                                 style="width:{{ r.pct_visitas_preagotados or 0 }}%"></div>
+                        </div>
+                    </div>
+                </td>
+                <td class="col-preagotados num" style="display:none">{{ r.cant_sku_preagotados or 0 }}</td>
+                <td class="col-preagotados" style="display:none">
+                    <div class="pct-bar">
+                        <span class="num">{{ r.pct_sku_preagotados or 0 }}%</span>
+                        <div class="bar-track">
+                            <div class="bar-fill {{ 'bar-warn' if (r.pct_sku_preagotados or 0) > 5 else 'bar-ok' }}"
+                                 style="width:{{ r.pct_sku_preagotados or 0 }}%"></div>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="15" style="text-align:center;padding:40px;color:var(--text-muted)">
+                    Sin resultados para los filtros aplicados.
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="pagination-bar">
+    <span style="color:var(--text-muted);font-size:12px">
+      Mostrando {{ registros|length }} registros — ajusta el rango de fechas para ver más
+    </span>
+    </div>
+</div>
+
+<script>
+    function toggleCols(vista, btn) {
+      const grupos = ['basico', 'agotados', 'preagotados'];
+      grupos.forEach(g => {
+        const show = g === vista;
+        document.querySelectorAll('.col-' + g).forEach(el => {
+          el.style.display = show ? '' : 'none';
+        });
+      });
+      document.querySelectorAll('.toggle-view button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+</script>
+
+{% endblock %}

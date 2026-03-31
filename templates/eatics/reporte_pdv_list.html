@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block title %}Reporte Gerencial PDV — Eatics{% endblock %}
+
+{% block topbar_title %}
+<i class="bi bi-graph-up-arrow me-2"></i> Análisis Gerencial de Ejecución
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+    <div class="card shadow-sm border-0 mb-4" style="border-radius: 15px;">
+        <div class="card-body p-4">
+            <form method="get" class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold text-secondary">Rango de Análisis</label>
+                    <div class="input-group input-group-sm">
+                        <input type="date" name="f_inicio" class="form-control" value="{{ request.query_params.get('f_inicio', '') }}">
+                        <span class="input-group-text bg-white">a</span>
+                        <input type="date" name="f_fin" class="form-control" value="{{ request.query_params.get('f_fin', '') }}">
+                    </div>
+                </div>
+
+                <div class="col-md-5">
+                    <label class="form-label small fw-bold text-secondary">Nivel de Consolidación</label>
+                    <div class="btn-group w-100" role="group">
+                        <a href="?vista=cadena" class="btn btn-sm {% if vista_actual == 'cadena' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                            <i class="bi bi-building"></i> Consolidar por Cadena
+                        </a>
+                        <a href="?vista=pdv" class="btn btn-sm {% if vista_actual == 'pdv' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                            <i class="bi bi-geo-alt"></i> Detalle por Punto de Venta
+                        </a>
+                    </div>
+                </div>
+
+                <div class="col-md-3">
+                    <button type="submit" class="btn btn-dark btn-sm w-100 shadow-sm">
+                        <i class="bi bi-arrow-clockwise me-1"></i> Actualizar Reporte
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0" style="border-radius: 15px; overflow: hidden;">
+        <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+            <h6 class="mb-0 fw-bold text-dark">
+                Mostrando: {{ 'Resumen por Cadena' if vista_actual == 'cadena' else 'Detalle por Tienda' }}
+            </h6>
+            <span class="badge bg-soft-primary text-primary">{{ datos|length }} registros encontrados</span>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="bg-light text-secondary small">
+                <tr>
+                    <th class="ps-4" style="width: 25%;">CADENA</th>
+                    {% if vista_actual == 'pdv' %}
+                    <th style="width: 25%;">PUNTO DE VENTA</th>
+                    {% endif %}
+                    <th class="text-center">VISITAS</th>
+                    <th style="width: 20%;">CUMPLIMIENTO</th>
+                    <th class="text-center">AGOTADOS</th>
+                </tr>
+                </thead>
+                <tbody class="border-top-0">
+                {% for item in datos %}
+                <tr>
+                    <td class="ps-4">
+                        <div class="d-flex align-items-center">
+                            <div class="avatar-sm me-2 bg-light d-flex align-items-center justify-content-center rounded" style="width: 32px; height: 32px;">
+                                <i class="bi bi-shop text-primary"></i>
+                            </div>
+                            <span class="fw-bold text-dark">{{ item.nombre_cadena }}</span>
+                        </div>
+                    </td>
+
+                    {% if vista_actual == 'pdv' %}
+                    <td>
+                        <span class="text-muted small fw-medium">{{ item.nombre_pdv }}</span>
+                    </td>
+                    {% endif %}
+
+                    <td class="text-center">
+                        <span class="badge bg-light text-dark border">{{ item.visitas }}</span>
+                    </td>
+
+                    <td>
+                        <div class="d-flex align-items-center">
+                            <div class="progress flex-grow-1 me-2" style="height: 6px; border-radius: 10px;">
+                                <div class="progress-bar {% if item.pct_cumplimiento >= 85 %}bg-success{% elif item.pct_cumplimiento >= 70 %}bg-warning{% else %}bg-danger{% endif %}"
+                                     role="progressbar" style="width: {{ item.pct_cumplimiento }}%"></div>
+                            </div>
+                            <span class="small fw-bold {{ 'text-danger' if item.pct_cumplimiento < 70 }}">{{ item.pct_cumplimiento }}%</span>
+                        </div>
+                    </td>
+
+                    <td class="text-center">
+                            <span class="fw-bold {% if item.pct_agotados > 15 %}text-danger{% else %}text-success{% endif %}">
+                                {{ item.pct_agotados }}%
+                            </span>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="text-center py-5">
+                        <div class="text-muted">
+                            <i class="bi bi-search display-6 mb-3 d-block"></i>
+                            <p>No se encontraron datos para mostrar con los filtros seleccionados.</p>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Estilos personalizados para un look moderno */
+    .bg-soft-primary { background-color: #e7f0ff; }
+    .progress-bar { transition: width 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+    .table-hover tbody tr:hover { background-color: #fbfcfe; transition: 0.2s; }
+    .form-control:focus, .btn:focus { box-shadow: none !important; border-color: #0d6efd; }
+    .avatar-sm i { font-size: 1.1rem; }
+</style>
+{% endblock %}

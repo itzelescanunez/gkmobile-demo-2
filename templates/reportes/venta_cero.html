@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% block title %}Venta Cero — Eatics{% endblock %}
+{% block topbar_title %}Detalle de productos sin movimiento{% endblock %}
+
+{% block content %}
+<style>
+    .kpi-row { display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-bottom:22px; }
+    .kpi { background:#fff; border:1px solid var(--border); border-radius:10px; padding:16px 18px; }
+    .kpi .kpi-label { font-size:10px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--text-muted); margin-bottom:6px; }
+    .kpi .kpi-value { font-size:24px; font-weight:600; font-family:'DM Mono',monospace; color:var(--text); }
+    .kpi .kpi-sub   { font-size:11px; color:var(--text-muted); margin-top:3px; }
+    .kpi.danger .kpi-value { color:#DC2626; }
+    .kpi.warn   .kpi-value { color:#D97706; }
+    .kpi.ok     .kpi-value { color:#16A34A; }
+
+    .filter-card { background:#fff; border:1px solid var(--border); border-radius:10px; padding:16px 20px; margin-bottom:18px; }
+    .filter-card form { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
+    .filter-group { display:flex; flex-direction:column; gap:4px; }
+    .filter-group label { font-size:10px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--text-muted); }
+    .filter-group input,
+    .filter-group select {
+      font-family:'DM Sans',sans-serif; font-size:13px;
+      border:1px solid var(--border); border-radius:7px;
+      padding:7px 12px; background:var(--bg); color:var(--text);
+      outline:none; transition:border-color .15s; min-width:140px;
+    }
+    .filter-group input:focus,
+    .filter-group select:focus { border-color:var(--accent); }
+
+    .num { font-family:'DM Mono',monospace; font-size:12px; }
+
+    /* Acordeón por marca */
+    .marca-section { margin-bottom:14px; }
+
+    .marca-header {
+      display:flex; align-items:center; justify-content:space-between;
+      padding:13px 20px; background:#fff;
+      border:1px solid var(--border); border-radius:10px;
+      cursor:pointer; transition:all .15s; user-select:none;
+    }
+
+    .marca-header:hover { border-color:var(--accent); background:#FAFBFF; }
+    .marca-header.open  { border-radius:10px 10px 0 0; border-bottom-color:transparent; }
+
+    .marca-header-left { display:flex; align-items:center; gap:12px; }
+
+    .marca-pill {
+      font-size:12px; font-weight:600; padding:4px 12px;
+      border-radius:20px; background:var(--accent-light); color:var(--accent);
+    }
+
+    .marca-header-stats { display:flex; gap:16px; }
+
+    .marca-stat { text-align:right; }
+    .marca-stat .ms-label { font-size:10px; color:var(--text-muted); text-transform:uppercase; letter-spacing:.06em; }
+    .marca-stat .ms-value { font-size:13px; font-weight:600; font-family:'DM Mono',monospace; color:var(--text); }
+
+    .marca-chevron {
+      font-size:12px; color:var(--text-muted);
+      transition:transform .2s; display:inline-block;
+    }
+    .marca-header.open .marca-chevron { transform:rotate(180deg); }
+
+    .marca-body {
+      display:none; border:1px solid var(--border);
+      border-top:none; border-radius:0 0 10px 10px;
+      overflow:hidden;
+    }
+    .marca-body.open { display:block; }
+
+    .producto-nombre {
+      font-size:13px; font-weight:500; color:var(--text);
+      max-width:300px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+
+    .inv-pill {
+      display:inline-block; font-family:'DM Mono',monospace; font-size:11px;
+      font-weight:500; padding:2px 8px; border-radius:4px;
+      background:var(--accent-light); color:var(--accent);
+    }
+</style>
+
+<!-- KPIs -->
+<div class="kpi-row">
+    <div class="kpi">
+        <div class="kpi-label">PDVs afectados</div>
+        <div class="kpi-value">{{ pdvs_afectados }}</div>
+        <div class="kpi-sub">puntos de venta</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi-label">Productos</div>
+        <div class="kpi-value">{{ total_productos }}</div>
+        <div class="kpi-sub">registros venta cero</div>
+    </div>
+    <div class="kpi ok">
+        <div class="kpi-label">Ejecutados</div>
+        <div class="kpi-value">{{ ejecutados }}</div>
+        <div class="kpi-sub">acción realizada</div>
+    </div>
+    <div class="kpi danger">
+        <div class="kpi-label">Pendientes</div>
+        <div class="kpi-value">{{ pendientes }}</div>
+        <div class="kpi-sub">sin ejecutar</div>
+    </div>
+    <div class="kpi">
+        <div class="kpi-label">Inventario total</div>
+        <div class="kpi-value">{{ "{:,.0f}".format(inv_total) }}</div>
+        <div class="kpi-sub">unidades registradas</div>
+    </div>
+</div>
+
+<!-- Filtros -->
+<div class="filter-card">
+    <form method="get">
+        <div class="filter-group">
+            <label>Fecha inicio</label>
+            <input type="date" name="fecha_ini" value="{{ fecha_ini }}">
+        </div>
+        <div class="filter-group">
+            <label>Fecha fin</label>
+            <input type="date" name="fecha_fin" value="{{ fecha_fin }}">
+        </div>
+        <div class="filter-group">
+            <label>Marca</label>
+            <select name="marca">
+                <option value="todas" {% if marca == 'todas' %}selected{% endif %}>Todas las marcas</option>
+                {% for m in marcas_disp %}
+                <option value="{{ m }}" {% if marca == m %}selected{% endif %}>{{ m }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="filter-group">
+            <label>Cadena</label>
+            <select name="cadena">
+                <option value="todas" {% if cadena == 'todas' %}selected{% endif %}>Todas las cadenas</option>
+                {% for cd in cadenas_disp %}
+                <option value="{{ cd }}" {% if cadena == cd %}selected{% endif %}>{{ cd }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn-filter">Aplicar</button>
+        <a href="/reportes/venta-cero" class="btn-clear">Limpiar</a>
+    </form>
+</div>
+
+<!-- Acordeón por marca -->
+{% for marca_nombre, productos in registros_por_marca.items() %}
+<div class="marca-section">
+    <div class="marca-header" onclick="toggleMarca('marca-{{ loop.index }}', this)">
+        <div class="marca-header-left">
+            <span class="marca-chevron">▼</span>
+            <span class="marca-pill">{{ marca_nombre }}</span>
+            <span style="font-size:13px;color:var(--text-muted)">
+        {{ productos|length }} registros —
+        {{ productos|selectattr('ejecutada')|list|length }} ejecutados,
+        {{ productos|rejectattr('ejecutada')|list|length }} pendientes
+      </span>
+        </div>
+        <div class="marca-header-stats">
+            <div class="marca-stat">
+                <div class="ms-label">Productos distintos</div>
+                <div class="ms-value">{{ productos|map(attribute='producto')|unique|list|length }}</div>
+            </div>
+            <div class="marca-stat">
+                <div class="ms-label">Inventario total</div>
+                <div class="ms-value">{{ "{:,.0f}".format(productos|sum(attribute='inventario') or 0) }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="marca-body" id="marca-{{ loop.index }}">
+        <table class="data-table">
+            <thead>
+            <tr>
+                <th>Producto</th>
+                <th>Cadena</th>
+                <th>Punto de venta</th>
+                <th>Estado</th>
+                <th>Inventario</th>
+                <th>Ejecutada</th>
+                <th>Fecha</th>
+                <th>Promotor</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for r in productos %}
+            <tr>
+                <td>
+                    <div class="producto-nombre" title="{{ r.producto }}">{{ r.producto or '—' }}</div>
+                    {% if r.upc %}
+                    <div style="font-size:10px;color:var(--text-muted);font-family:'DM Mono',monospace;margin-top:2px">
+                        UPC: {{ r.upc }}
+                    </div>
+                    {% endif %}
+                </td>
+                <td>{{ r.cadena or '—' }}</td>
+                <td style="font-size:12px">{{ r.punto_venta or '—' }}</td>
+                <td style="font-size:12px">{{ r.estado or '—' }}</td>
+                <td><span class="inv-pill">{{ "{:,.0f}".format(r.inventario) if r.inventario else '0' }}</span></td>
+                <td>
+            <span class="badge-status {{ 'badge-ok' if r.ejecutada else 'badge-warn' }}">
+              {{ 'Ejecutada' if r.ejecutada else 'Pendiente' }}
+            </span>
+                </td>
+                <td class="num">{{ r.fecha.strftime('%d/%m/%Y') if r.fecha else '—' }}</td>
+                <td style="font-size:12px">{{ r.promotor or '—' }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="card-clean" style="padding:40px;text-align:center;color:var(--text-muted)">
+    Sin resultados para los filtros aplicados.
+</div>
+{% endfor %}
+
+<script>
+    function toggleMarca(id, header) {
+      const body = document.getElementById(id);
+      const isOpen = body.classList.contains('open');
+      body.classList.toggle('open', !isOpen);
+      header.classList.toggle('open', !isOpen);
+    }
+</script>
+{% endblock %}

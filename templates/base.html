@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Eatics — GKMobile{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+          --sidebar-w: 240px;
+          --accent: #0057FF;
+          --accent-light: #E8EFFE;
+          --bg: #F4F5F7;
+          --sidebar-bg: #0F1117;
+          --sidebar-text: #9AA0B0;
+          --sidebar-active: #FFFFFF;
+          --border: #E2E4E9;
+          --text: #1A1D23;
+          --text-muted: #6B7280;
+          --success: #16A34A;
+          --danger: #DC2626;
+          --warning: #D97706;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+          font-family: 'DM Sans', sans-serif;
+          background: var(--bg);
+          color: var(--text);
+          display: flex;
+          min-height: 100vh;
+        }
+
+        /* ── Sidebar ── */
+        .sidebar {
+          width: var(--sidebar-w);
+          min-height: 100vh;
+          background: var(--sidebar-bg);
+          display: flex;
+          flex-direction: column;
+          position: fixed;
+          top: 0; left: 0;
+          z-index: 100;
+        }
+
+        .sidebar-brand {
+          padding: 24px 20px 20px;
+          border-bottom: 1px solid rgba(255,255,255,0.07);
+        }
+
+        .sidebar-brand .brand-label {
+          font-size: 11px;
+          font-weight: 500;
+          letter-spacing: 0.1em;
+          color: var(--sidebar-text);
+          text-transform: uppercase;
+          margin-bottom: 4px;
+        }
+
+        .sidebar-brand .brand-name {
+          font-size: 18px;
+          font-weight: 600;
+          color: #FFFFFF;
+        }
+
+        .sidebar-brand .brand-name span {
+          color: var(--accent);
+        }
+
+        .sidebar-section {
+          padding: 16px 12px 4px;
+        }
+
+        .sidebar-section-label {
+          font-size: 10px;
+          font-weight: 600;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          color: rgba(154,160,176,0.5);
+          padding: 0 8px;
+          margin-bottom: 6px;
+        }
+
+        .sidebar-link {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 9px 12px;
+          border-radius: 8px;
+          color: var(--sidebar-text);
+          text-decoration: none;
+          font-size: 13.5px;
+          font-weight: 400;
+          transition: all 0.15s ease;
+          margin-bottom: 2px;
+        }
+
+        .sidebar-link:hover {
+          background: rgba(255,255,255,0.06);
+          color: #FFFFFF;
+        }
+
+        .sidebar-link.active {
+          background: var(--accent);
+          color: #FFFFFF;
+          font-weight: 500;
+        }
+
+        .sidebar-link .dot {
+          width: 6px; height: 6px;
+          border-radius: 50%;
+          background: currentColor;
+          opacity: 0.5;
+          flex-shrink: 0;
+        }
+
+        .sidebar-link.active .dot { opacity: 1; }
+
+        /* ── Main ── */
+        .main {
+          margin-left: var(--sidebar-w);
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          min-height: 100vh;
+        }
+
+        .topbar {
+          background: #FFFFFF;
+          border-bottom: 1px solid var(--border);
+          padding: 16px 28px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          position: sticky;
+          top: 0;
+          z-index: 50;
+        }
+
+        .topbar-title {
+          font-size: 15px;
+          font-weight: 600;
+          color: var(--text);
+        }
+
+        .topbar-badge {
+          font-size: 11px;
+          font-weight: 500;
+          background: var(--accent-light);
+          color: var(--accent);
+          padding: 3px 10px;
+          border-radius: 20px;
+        }
+
+        .page-content {
+          padding: 28px;
+          flex: 1;
+        }
+
+        /* ── Cards ── */
+        .card-clean {
+          background: #FFFFFF;
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          overflow: hidden;
+        }
+
+        .card-clean-header {
+          padding: 18px 22px;
+          border-bottom: 1px solid var(--border);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+
+        .card-clean-header h6 {
+          font-size: 13px;
+          font-weight: 600;
+          color: var(--text);
+          margin: 0;
+        }
+
+        /* ── Filtros ── */
+        .filter-bar {
+          background: #FFFFFF;
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          padding: 14px 18px;
+          margin-bottom: 18px;
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          align-items: center;
+        }
+
+        .filter-bar input {
+          font-family: 'DM Sans', sans-serif;
+          font-size: 13px;
+          border: 1px solid var(--border);
+          border-radius: 7px;
+          padding: 7px 12px;
+          color: var(--text);
+          background: var(--bg);
+          outline: none;
+          transition: border-color 0.15s;
+        }
+
+        .filter-bar input:focus { border-color: var(--accent); }
+
+        .btn-filter {
+          font-family: 'DM Sans', sans-serif;
+          font-size: 13px;
+          font-weight: 500;
+          background: var(--accent);
+          color: #FFFFFF;
+          border: none;
+          border-radius: 7px;
+          padding: 7px 16px;
+          cursor: pointer;
+          transition: opacity 0.15s;
+        }
+
+        .btn-filter:hover { opacity: 0.88; }
+
+        .btn-clear {
+          font-family: 'DM Sans', sans-serif;
+          font-size: 13px;
+          font-weight: 400;
+          background: transparent;
+          color: var(--text-muted);
+          border: 1px solid var(--border);
+          border-radius: 7px;
+          padding: 7px 14px;
+          cursor: pointer;
+          text-decoration: none;
+          transition: all 0.15s;
+        }
+
+        .btn-clear:hover { border-color: var(--text-muted); color: var(--text); }
+
+        /* ── Tabla ── */
+        .data-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 13px;
+        }
+
+        .data-table thead tr {
+          background: var(--bg);
+        }
+
+        .data-table thead th {
+          font-size: 11px;
+          font-weight: 600;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          color: var(--text-muted);
+          padding: 11px 16px;
+          border-bottom: 1px solid var(--border);
+          white-space: nowrap;
+        }
+
+        .data-table tbody tr {
+          border-bottom: 1px solid var(--border);
+          transition: background 0.1s;
+        }
+
+        .data-table tbody tr:last-child { border-bottom: none; }
+        .data-table tbody tr:hover { background: #FAFBFF; }
+
+        .data-table tbody td {
+          padding: 11px 16px;
+          color: var(--text);
+          vertical-align: middle;
+        }
+
+        .data-table tbody td a {
+          color: var(--accent);
+          text-decoration: none;
+          font-weight: 500;
+          font-family: 'DM Mono', monospace;
+          font-size: 12px;
+        }
+
+        .data-table tbody td a:hover { text-decoration: underline; }
+
+        /* ── Badges ── */
+        .badge-status {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          font-size: 11px;
+          font-weight: 500;
+          padding: 3px 9px;
+          border-radius: 20px;
+        }
+
+        .badge-status::before {
+          content: '';
+          width: 5px; height: 5px;
+          border-radius: 50%;
+          background: currentColor;
+        }
+
+        .badge-ok    { background: #DCFCE7; color: var(--success); }
+        .badge-no    { background: #F3F4F6; color: var(--text-muted); }
+        .badge-warn  { background: #FEF3C7; color: var(--warning); }
+        .badge-info  { background: var(--accent-light); color: var(--accent); }
+
+        /* ── Paginación ── */
+        .pagination-bar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 14px 22px;
+          border-top: 1px solid var(--border);
+          font-size: 12px;
+          color: var(--text-muted);
+        }
+
+        .pagination-bar a {
+          color: var(--accent);
+          text-decoration: none;
+          font-weight: 500;
+          padding: 5px 12px;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          transition: all 0.15s;
+        }
+
+        .pagination-bar a:hover { background: var(--accent-light); border-color: var(--accent); }
+        .pagination-bar a.disabled { pointer-events: none; opacity: 0.4; }
+
+        /* ── Detalle ── */
+        .detail-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 1px;
+          background: var(--border);
+        }
+
+        .detail-cell {
+          background: #FFFFFF;
+          padding: 14px 20px;
+        }
+
+        .detail-cell .label {
+          font-size: 10px;
+          font-weight: 600;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          color: var(--text-muted);
+          margin-bottom: 4px;
+        }
+
+        .detail-cell .value {
+          font-size: 14px;
+          color: var(--text);
+          font-weight: 400;
+        }
+
+        .detail-cell .value.mono {
+          font-family: 'DM Mono', monospace;
+          font-size: 13px;
+        }
+
+        .btn-back {
+          font-family: 'DM Sans', sans-serif;
+          font-size: 13px;
+          font-weight: 500;
+          color: var(--text-muted);
+          text-decoration: none;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          margin-bottom: 18px;
+          transition: color 0.15s;
+        }
+
+        .btn-back:hover { color: var(--text); }
+
+        /* ── Stats ── */
+        .stats-row {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 14px;
+          margin-bottom: 20px;
+        }
+
+        .stat-card {
+          background: #FFFFFF;
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          padding: 16px 18px;
+        }
+
+        .stat-card .stat-label {
+          font-size: 11px;
+          font-weight: 500;
+          color: var(--text-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.07em;
+          margin-bottom: 6px;
+        }
+
+        .stat-card .stat-value {
+          font-size: 22px;
+          font-weight: 600;
+          color: var(--text);
+          font-family: 'DM Mono', monospace;
+        }
+    </style>
+</head>
+<body>
+
+<!-- ── Sidebar ── -->
+<nav class="sidebar">
+    <div class="sidebar-brand">
+        <div class="brand-label">GKMobile</div>
+        <div class="brand-name">E<span>atics</span></div>
+    </div>
+
+    <div class="sidebar-section">
+        <div class="sidebar-section-label">Catálogos</div>
+        <a href="/eatics/ejecucion-marca" class="sidebar-link {% if catalogo == 'ejecucion-marca' %}active{% endif %}">
+            <span class="dot"></span> Ejecución marca
+        </a>
+        <a href="/eatics/ejecucion-pdv" class="sidebar-link {% if catalogo == 'ejecucion-pdv' %}active{% endif %}">
+            <span class="dot"></span> Ejecución PDV
+        </a>
+        <a href="/eatics/auditoria-marca" class="sidebar-link {% if catalogo == 'auditoria-marca' %}active{% endif %}">
+            <span class="dot"></span> Auditoría marca
+        </a>
+        <a href="/eatics/precios" class="sidebar-link {% if catalogo == 'precios' %}active{% endif %}">
+            <span class="dot"></span> Precios
+        </a>
+        <a href="/eatics/competencia" class="sidebar-link {% if catalogo == 'competencia' %}active{% endif %}">
+            <span class="dot"></span> Competencia
+        </a>
+    </div>
+
+    <div class="sidebar-section">
+        <div class="sidebar-section-label">Reportes</div>
+
+        <a href="/reportes/marca-pdv" class="sidebar-link {% if catalogo == 'reporte-marca-pdv' %}active{% endif %}">
+            <span class="dot"></span> Marca por PDV
+        </a>
+
+        <a href="/reportes/venta-cero" class="sidebar-link {% if catalogo == 'reporte-venta-cero' %}active{% endif %}">
+            <span class="dot"></span> Venta cero
+        </a>
+
+        <a href="http://localhost:8088" target="_blank" class="sidebar-link">
+            <span class="dot"></span> Superset
+        </a>
+    </div>
+</nav>
+
+<!-- ── Main ── -->
+<div class="main">
+    <div class="topbar">
+        <span class="topbar-title">{% block topbar_title %}{% endblock %}</span>
+        <span class="topbar-badge">Eatics</span>
+    </div>
+
+    <div class="page-content">
+        {% block content %}{% endblock %}
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
