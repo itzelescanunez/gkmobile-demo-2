@@ -3,53 +3,154 @@
 {% block topbar_title %}Precios{% endblock %}
 
 {% block content %}
+<style>
+    .stats-row { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:20px; }
+    .stat-card { background:#fff; border:1px solid var(--border); border-radius:10px; padding:16px 18px; }
+    .stat-card .stat-label { font-size:10px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--text-muted); margin-bottom:6px; }
+    .stat-card .stat-value { font-size:22px; font-weight:600; font-family:'DM Mono',monospace; color:var(--text); }
+
+    .tipo-toggle { display:flex; gap:6px; }
+    .tipo-toggle a {
+      font-family:'DM Sans',sans-serif; font-size:12px; font-weight:500;
+      padding:5px 14px; border-radius:6px; cursor:pointer; text-decoration:none;
+      border:1px solid var(--border); background:var(--bg); color:var(--text-muted);
+      transition:all .15s;
+    }
+    .tipo-toggle a.active-todos   { background:#1A1D23; color:#fff; border-color:#1A1D23; }
+    .tipo-toggle a.active-propio  { background:#16A34A; color:#fff; border-color:#16A34A; }
+    .tipo-toggle a.active-comp    { background:#D97706; color:#fff; border-color:#D97706; }
+
+    .precio-propio { color:#16A34A; font-weight:600; font-family:'DM Mono',monospace; }
+    .precio-comp   { color:#D97706; font-weight:600; font-family:'DM Mono',monospace; }
+    .num { font-family:'DM Mono',monospace; font-size:12px; }
+</style>
+
+<!-- Stats -->
 <div class="stats-row">
-    <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">{{ "{:,}".format(total) }}</div></div>
-    <div class="stat-card"><div class="stat-label">Página</div><div class="stat-value">{{ page }} / {{ total_pages }}</div></div>
-    <div class="stat-card"><div class="stat-label">Por página</div><div class="stat-value">{{ page_size }}</div></div>
-    <div class="stat-card"><div class="stat-label">Mostrando</div><div class="stat-value">{{ registros|length }}</div></div>
+    <div class="stat-card">
+        <div class="stat-label">Total registros</div>
+        <div class="stat-value">{{ "{:,}".format(total) }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Propios</div>
+        <div class="stat-value" style="color:#16A34A">{{ "{:,}".format(propios) }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Competencia</div>
+        <div class="stat-value" style="color:#D97706">{{ "{:,}".format(competencia) }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Mostrando</div>
+        <div class="stat-value">{{ registros|length }}</div>
+    </div>
 </div>
 
-<form class="filter-bar" method="get">
-    <input type="text" name="q" value="{{ q or '' }}" placeholder="Buscar promotor, supervisor...">
-    <input type="text" name="supervisor" value="{{ supervisor or '' }}" placeholder="Supervisor...">
-    <button type="submit" class="btn-filter">Filtrar</button>
-    <a href="/eatics/precios" class="btn-clear">Limpiar</a>
-</form>
-
-<div class="card-clean">
-    <div class="card-clean-header"><h6>Precios registrados</h6></div>
-    <table class="data-table">
-        <thead>
-        <tr>
-            <th>ID</th><th>Promotor</th><th>Supervisor</th><th>Fecha</th>
-            <th>Precio</th><th>Es propio</th><th>Producto ID</th><th>PDV ID</th><th>Status</th>
-        </tr>
-        </thead>
-        <tbody>
-        {% for item in registros %}
-        <tr>
-            <td><a href="/eatics/precios/{{ item.id }}">#{{ item.id }}</a></td>
-            <td>{{ item.user_real_name or '—' }}</td>
-            <td>{{ item.supervisor or '—' }}</td>
-            <td>{{ item.fecha.strftime('%d/%m/%Y') if item.fecha else '—' }}</td>
-            <td style="font-family:'DM Mono',monospace">{{ '$ {:,.2f}'.format(item.precio) if item.precio else '—' }}</td>
-            <td><span class="badge-status {{ 'badge-ok' if item.is_propio else 'badge-warn' }}">{{ 'Propio' if item.is_propio else 'Competencia' }}</span></td>
-            <td style="font-family:'DM Mono',monospace;font-size:12px">{{ item.producto_id or '—' }}</td>
-            <td style="font-family:'DM Mono',monospace;font-size:12px">{{ item.punto_venta_id or '—' }}</td>
-            <td><span class="badge-status {{ 'badge-ok' if item.status else 'badge-no' }}">{{ 'Activo' if item.status else 'Inactivo' }}</span></td>
-        </tr>
-        {% else %}
-        <tr><td colspan="9" style="text-align:center;padding:32px;color:var(--text-muted)">Sin resultados.</td></tr>
-        {% endfor %}
-        </tbody>
-    </table>
-    <div class="pagination-bar">
-        <span>{{ "{:,}".format(total) }} registros</span>
-        <div style="display:flex;gap:8px;">
-            <a href="?page={{ page-1 }}{% if supervisor %}&supervisor={{ supervisor }}{% endif %}" class="{{ 'disabled' if page<=1 else '' }}">← Anterior</a>
-            <a href="?page={{ page+1 }}{% if supervisor %}&supervisor={{ supervisor }}{% endif %}" class="{{ 'disabled' if page>=total_pages else '' }}">Siguiente →</a>
+<!-- Filtros -->
+<div style="background:#fff;border:1px solid var(--border);border-radius:10px;padding:14px 18px;margin-bottom:18px;">
+    <form method="get" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+        <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--text-muted)">Fecha inicio</label>
+            <input type="date" name="fecha_ini" value="{{ fecha_ini }}"
+                   style="font-family:'DM Sans',sans-serif;font-size:13px;border:1px solid var(--border);border-radius:7px;padding:7px 12px;background:var(--bg);color:var(--text);outline:none;">
         </div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--text-muted)">Fecha fin</label>
+            <input type="date" name="fecha_fin" value="{{ fecha_fin }}"
+                   style="font-family:'DM Sans',sans-serif;font-size:13px;border:1px solid var(--border);border-radius:7px;padding:7px 12px;background:var(--bg);color:var(--text);outline:none;">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--text-muted)">Cadena</label>
+            <select name="cadena" style="font-family:'DM Sans',sans-serif;font-size:13px;border:1px solid var(--border);border-radius:7px;padding:7px 12px;background:var(--bg);color:var(--text);outline:none;min-width:160px;">
+                <option value="todas" {% if cadena =='todas' %}selected{% endif %}>Todas las cadenas</option>
+                {% for cd in cadenas_disp %}
+                <option value="{{ cd }}" {% if cadena == cd %}selected{% endif %}>{{ cd }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--text-muted)">Buscar producto</label>
+            <input type="text" name="q" value="{{ q }}" placeholder="Nombre del producto..."
+                   style="font-family:'DM Sans',sans-serif;font-size:13px;border:1px solid var(--border);border-radius:7px;padding:7px 12px;background:var(--bg);color:var(--text);outline:none;min-width:200px;">
+        </div>
+        <input type="hidden" name="tipo" value="{{ tipo }}">
+        <button type="submit" class="btn-filter">Aplicar</button>
+        <a href="/eatics/precios" class="btn-clear">Limpiar</a>
+    </form>
+</div>
+
+<!-- Tabla -->
+<div class="card-clean">
+    <div class="card-clean-header">
+        <h6>Precios registrados
+            <span style="font-weight:400;color:var(--text-muted);font-size:12px">— {{ registros|length }} registros</span>
+        </h6>
+        <div class="tipo-toggle">
+            <a href="?fecha_ini={{ fecha_ini }}&fecha_fin={{ fecha_fin }}&cadena={{ cadena }}&q={{ q }}&tipo=todos"
+               class="{{ 'active-todos' if tipo == 'todos' else '' }}">Todos</a>
+            <a href="?fecha_ini={{ fecha_ini }}&fecha_fin={{ fecha_fin }}&cadena={{ cadena }}&q={{ q }}&tipo=propio"
+               class="{{ 'active-propio' if tipo == 'propio' else '' }}">Propios</a>
+            <a href="?fecha_ini={{ fecha_ini }}&fecha_fin={{ fecha_fin }}&cadena={{ cadena }}&q={{ q }}&tipo=competencia"
+               class="{{ 'active-comp' if tipo == 'competencia' else '' }}">Competencia</a>
+        </div>
+    </div>
+
+    <div style="overflow-x:auto;">
+        <table class="data-table">
+            <thead>
+            <tr>
+                <th>Producto</th>
+                <th>Tipo</th>
+                <th>Precio</th>
+                <th>Cadena</th>
+                <th>Punto de venta</th>
+                <th>Categoría</th>
+                <th>Promotor</th>
+                <th>Fecha</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for r in registros %}
+            {% set es_propio = r.is_propio %}
+            <tr>
+                <td>
+                    <div style="font-size:13px;font-weight:500;color:var(--text);max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{{ r.producto }}">
+                        {{ r.producto or '—' }}
+                    </div>
+                    {% if r.upc %}
+                    <div style="font-size:10px;color:var(--text-muted);font-family:'DM Mono',monospace;margin-top:2px">UPC: {{ r.upc }}</div>
+                    {% endif %}
+                </td>
+                <td>
+            <span class="badge-status {{ 'badge-ok' if es_propio else 'badge-warn' }}">
+              {{ 'Propio' if es_propio else 'Competencia' }}
+            </span>
+                </td>
+                <td>
+            <span class="{{ 'precio-propio' if es_propio else 'precio-comp' }}">
+              ${{ "%.2f"|format(r.precio) if r.precio else '—' }}
+            </span>
+                </td>
+                <td>{{ r.cadena or '—' }}</td>
+                <td style="font-size:12px">{{ r.punto_venta or '—' }}</td>
+                <td style="font-size:12px">{{ r.categoria or '—' }}</td>
+                <td style="font-size:12px">{{ r.promotor or '—' }}</td>
+                <td class="num">{{ r.fecha.strftime('%d/%m/%Y') if r.fecha else '—' }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="8" style="text-align:center;padding:40px;color:var(--text-muted)">
+                    Sin resultados para los filtros aplicados.
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="pagination-bar">
+    <span style="color:var(--text-muted);font-size:12px">
+      Mostrando {{ registros|length }} registros — ajusta el rango de fechas para ver más
+    </span>
     </div>
 </div>
 {% endblock %}

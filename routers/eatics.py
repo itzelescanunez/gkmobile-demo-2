@@ -156,41 +156,41 @@ def detalle_auditoria_marca(request: Request, registro_id: int, db: Session = De
 # ─────────────────────────────────────────
 # PRECIOS
 # ─────────────────────────────────────────
-@router.get("/precios", response_class=HTMLResponse)
-def vista_precios(
-        request: Request,
-        q: Optional[str] = None,
-        supervisor: Optional[str] = None,
-        page: int = 1,
-        db: Session = Depends(get_db),
-):
-    resultado = listar_catalogo(
-        db, models.PreciosEatics,
-        filtros={"supervisor": supervisor},
-        campos_busqueda=["user_real_name", "supervisor"],
-        q=q, page=page,
-    )
-    return templates.TemplateResponse(request=request, name="eatics/precios_list.html", context={
-        **resultado, "q": q, "supervisor": supervisor,
-        "titulo": "Precios",
-        "catalogo": "precios",
-    })
+#@router.get("/precios", response_class=HTMLResponse)
+#def vista_precios(
+#        request: Request,
+#        q: Optional[str] = None,
+#        supervisor: Optional[str] = None,
+#        page: int = 1,
+#        db: Session = Depends(get_db),
+#):
+#    resultado = listar_catalogo(
+#        db, models.PreciosEatics,
+#        filtros={"supervisor": supervisor},
+#        campos_busqueda=["user_real_name", "supervisor"],
+#        q=q, page=page,
+#    )
+#    return templates.TemplateResponse(request=request, name="eatics/precios_list.html", context={
+#        **resultado, "q": q, "supervisor": supervisor,
+#        "titulo": "Precios",
+#        "catalogo": "precios",
+#    })
 
 
-@router.get("/precios/{registro_id}", response_class=HTMLResponse)
-def detalle_precio(request: Request, registro_id: int, db: Session = Depends(get_db)):
-    item = obtener_detalle(db, models.PreciosEatics, registro_id)
-    if not item:
-        raise HTTPException(status_code=404, detail="Registro no encontrado")
-    return templates.TemplateResponse(request=request, name="eatics/detalle.html", context={
-        "item": item, "titulo": "Detalle — Precio", "catalogo": "precios",
-        "campos": [
-            ("ID", item.id), ("Promotor", item.user_real_name), ("Supervisor", item.supervisor),
-            ("Fecha", item.fecha), ("Precio", item.precio), ("Es propio", item.is_propio),
-            ("Producto ID", item.producto_id), ("Categoría ID", item.categoria_id),
-            ("PDV ID", item.punto_venta_id), ("Cadena ID", item.cadena_id), ("Status", item.status),
-        ]
-    })
+#@router.get("/precios/{registro_id}", response_class=HTMLResponse)
+#def detalle_precio(request: Request, registro_id: int, db: Session = Depends(get_db)):
+#    item = obtener_detalle(db, models.PreciosEatics, registro_id)
+#    if not item:
+#        raise HTTPException(status_code=404, detail="Registro no encontrado")
+#    return templates.TemplateResponse(request=request, name="eatics/detalle.html", context={
+#        "item": item, "titulo": "Detalle — Precio", "catalogo": "precios",
+#        "campos": [
+#            ("ID", item.id), ("Promotor", item.user_real_name), ("Supervisor", item.supervisor),
+#            ("Fecha", item.fecha), ("Precio", item.precio), ("Es propio", item.is_propio),
+#            ("Producto ID", item.producto_id), ("Categoría ID", item.categoria_id),
+#            ("PDV ID", item.punto_venta_id), ("Cadena ID", item.cadena_id), ("Status", item.status),
+#        ]
+#    })
 
 
 # ─────────────────────────────────────────

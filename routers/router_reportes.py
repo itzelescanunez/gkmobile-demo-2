@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from typing import Optional
 from datetime import date
 from collections import defaultdict
@@ -9,6 +10,7 @@ from collections import defaultdict
 from database import SessionLocal
 from model_reporte import ReporteMarcaPdv
 from model_venta_cero import DetalleVentaCero
+from model_precios_agotados import AgotadosConProducto
 
 router_reportes = APIRouter(prefix="/reportes", tags=["Reportes"])
 templates = Jinja2Templates(directory="templates")
@@ -52,7 +54,6 @@ def reporte_marca_pdv(
     registros_raw = query.all()
 
     # Agrupar dinámicamente por cadena + pdv + marca
-    from collections import defaultdict
     agrupado = defaultdict(lambda: {
         "cadena": "", "punto_venta": "", "municipio": "", "estado": "", "marca": "",
         "pdv_id": None,
@@ -71,13 +72,13 @@ def reporte_marca_pdv(
         g["estado"]       = r.estado or ""
         g["marca"]        = r.marca or ""
         g["pdv_id"]       = r.pdv_id
-        g["total_visitas"]          += int(r.total_visitas or 0)
-        g["cant_sku"]               += int(r.cant_sku or 0)
-        g["cumple_planograma"]      += int(r.cumple_planograma or 0)
-        g["visitas_con_agotados"]   += int(r.visitas_con_agotados or 0)
-        g["cant_sku_agotados"]      += int(r.cant_sku_agotados or 0)
-        g["visitas_con_preagotados"]+= int(r.visitas_con_preagotados or 0)
-        g["cant_sku_preagotados"]   += int(r.cant_sku_preagotados or 0)
+        g["total_visitas"]           += int(r.total_visitas or 0)
+        g["cant_sku"]                += int(r.cant_sku or 0)
+        g["cumple_planograma"]       += int(r.cumple_planograma or 0)
+        g["visitas_con_agotados"]    += int(r.visitas_con_agotados or 0)
+        g["cant_sku_agotados"]       += int(r.cant_sku_agotados or 0)
+        g["visitas_con_preagotados"] += int(r.visitas_con_preagotados or 0)
+        g["cant_sku_preagotados"]    += int(r.cant_sku_preagotados or 0)
 
     # Calcular porcentajes finales
     registros = []
@@ -92,6 +93,25 @@ def reporte_marca_pdv(
         registros.append(g)
 
     registros = sorted(registros, key=lambda x: (x["cadena"], x["punto_venta"], x["marca"]))
+
+    # ── Productos agotados por PDV+marca ──
+    pdv_ids_en_reporte = list(set(r["pdv_id"] for r in registros if r["pdv_id"]))
+    marcas_en_reporte  = list(set(r["marca"]  for r in registros if r["marca"]))
+
+    agotados_query = db.query(AgotadosConProducto).filter(
+        AgotadosConProducto.punto_venta_id.in_(pdv_ids_en_reporte),
+        AgotadosConProducto.marca.in_(marcas_en_reporte),
+        text(f"fecha >= '{fecha_ini}'"),
+        text(f"fecha <= '{fecha_fin}'"),
+    )
+
+    agotados_por_pdv = defaultdict(set)
+    for a in agotados_query.all():
+        if a.producto_en_riesgo and a.cant_agotados and a.cant_agotados > 0:
+            key = f"{a.punto_venta_id}_{a.marca}"
+            agotados_por_pdv[key].add(a.producto_en_riesgo)
+
+    agotados_por_pdv = {k: list(v) for k, v in agotados_por_pdv.items()}
 
     # KPIs
     total_visitas     = sum(r["total_visitas"] for r in registros)
@@ -109,7 +129,9 @@ def reporte_marca_pdv(
         request=request,
         name="reportes/marca_pdv.html",
         context={
-            "registros": registros, "fecha_ini": fecha_ini, "fecha_fin": fecha_fin,
+            "registros": registros,
+            "agotados_por_pdv": agotados_por_pdv,
+            "fecha_ini": fecha_ini, "fecha_fin": fecha_fin,
             "marca": marca or "todas", "cadena": cadena or "todas",
             "marcas_disp": marcas_disp, "cadenas_disp": cadenas_disp,
             "total_visitas": total_visitas, "total_sku": total_sku,
@@ -121,7 +143,7 @@ def reporte_marca_pdv(
 
 
 # ─────────────────────────────────────────
-# VENTA CERO — agrupado por marca
+# VENTA CERO
 # ─────────────────────────────────────────
 @router_reportes.get("/venta-cero", response_class=HTMLResponse)
 def reporte_venta_cero(
@@ -133,10 +155,9 @@ def reporte_venta_cero(
         db: Session = Depends(get_db),
 ):
     if not fecha_ini:
-        hoy = date.today()
-        fecha_ini = hoy.replace(day=1).strftime("%Y-%m-%d")
+        fecha_ini = "2026-03-01"
     if not fecha_fin:
-        fecha_fin = date.today().strftime("%Y-%m-%d")
+        fecha_fin = "2026-03-31"
 
     query = db.query(DetalleVentaCero)
 
@@ -156,12 +177,10 @@ def reporte_venta_cero(
         DetalleVentaCero.cadena,
     ).limit(1000).all()
 
-    # Agrupar por marca para el acordeón
     registros_por_marca = defaultdict(list)
     for r in registros:
         registros_por_marca[r.marca or "OTRA"].append(r)
 
-    # Ordenar marcas: primero las conocidas, luego OTRA
     orden = ["FAGE", "LIFEWAY", "CALIFIA", "FORAGER", "OTRA"]
     registros_por_marca = {
         k: registros_por_marca[k]
@@ -169,12 +188,11 @@ def reporte_venta_cero(
         if k in registros_por_marca
     }
 
-    # KPIs
-    total_productos  = len(registros)
-    ejecutados       = sum(1 for r in registros if r.ejecutada)
-    pendientes       = total_productos - ejecutados
-    inv_total        = sum(float(r.inventario or 0) for r in registros)
-    pdvs_afectados   = len(set(r.punto_venta_id for r in registros))
+    total_productos = len(registros)
+    ejecutados      = sum(1 for r in registros if r.ejecutada)
+    pendientes      = total_productos - ejecutados
+    inv_total       = sum(float(r.inventario or 0) for r in registros)
+    pdvs_afectados  = len(set(r.punto_venta_id for r in registros))
 
     marcas_disp  = ["FAGE", "LIFEWAY", "CALIFIA", "FORAGER", "OTRA"]
     cadenas_disp = sorted(set(

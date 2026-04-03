@@ -91,7 +91,7 @@
         <div class="filter-group">
             <label>Marca</label>
             <select name="marca">
-                <option value="todas" {% if marca == 'todas' %}selected{% endif %}>Todas las marcas</option>
+                <option value="todas" {% if marca =='todas' %}selected{% endif %}>Todas las marcas</option>
                 {% for m in marcas_disp %}
                 <option value="{{ m }}" {% if marca == m %}selected{% endif %}>{{ m }}</option>
                 {% endfor %}
@@ -100,7 +100,7 @@
         <div class="filter-group">
             <label>Cadena</label>
             <select name="cadena">
-                <option value="todas" {% if cadena == 'todas' %}selected{% endif %}>Todas las cadenas</option>
+                <option value="todas" {% if cadena =='todas' %}selected{% endif %}>Todas las cadenas</option>
                 {% for cd in cadenas_disp %}
                 <option value="{{ cd }}" {% if cadena == cd %}selected{% endif %}>{{ cd }}</option>
                 {% endfor %}
@@ -140,11 +140,13 @@
                 <th class="col-agotados" style="display:none">% Vis. agotados</th>
                 <th class="col-agotados" style="display:none">SKU agotados</th>
                 <th class="col-agotados" style="display:none">% SKU agotados</th>
+                <th class="col-agotados" style="display:none">Productos en riesgo</th>
                 <!-- Preagotados -->
                 <th class="col-preagotados" style="display:none">Visitas c/preagotados</th>
                 <th class="col-preagotados" style="display:none">% Vis. preagotados</th>
                 <th class="col-preagotados" style="display:none">SKU preagotados</th>
                 <th class="col-preagotados" style="display:none">% SKU preagotados</th>
+                <th class="col-preagotados" style="display:none">Productos preagotados</th>
             </tr>
             </thead>
             <tbody>
@@ -190,6 +192,25 @@
                     </div>
                 </td>
 
+                <!-- Columna de productos en riesgo -->
+                <td class="col-agotados" style="display:none">
+                    {% set key = r['pdv_id']|string + '_' + r['marca'] %}
+                    {% if agotados_por_pdv.get(key) %}
+                    <div style="display:flex;flex-direction:column;gap:3px;">
+                        {% for prod in agotados_por_pdv[key][:4] %}
+                        <span style="font-size:11px;background:#FEF2F2;color:#DC2626;padding:2px 7px;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;" title="{{ prod }}">
+                            {{ prod }}
+                        </span>
+                        {% endfor %}
+                        {% if agotados_por_pdv[key]|length > 4 %}
+                        <span style="font-size:10px;color:var(--text-muted)">+{{ agotados_por_pdv[key]|length - 4 }} más</span>
+                        {% endif %}
+                    </div>
+                    {% else %}
+                    <span style="color:var(--text-muted);font-size:12px">—</span>
+                    {% endif %}
+                </td>
+
                 <!-- Preagotados -->
                 <td class="col-preagotados num" style="display:none">{{ r.visitas_con_preagotados or 0 }}</td>
                 <td class="col-preagotados" style="display:none">
@@ -210,6 +231,23 @@
                                  style="width:{{ r.pct_sku_preagotados or 0 }}%"></div>
                         </div>
                     </div>
+                </td>
+                <td class="col-preagotados" style="display:none">
+                    {% set key = r['pdv_id']|string + '_' + r['marca'] %}
+                    {% if agotados_por_pdv.get(key) %}
+                    <div style="display:flex;flex-direction:column;gap:3px;">
+                        {% for prod in agotados_por_pdv[key][:4] %}
+                        <span style="font-size:11px;background:#FEF3C7;color:#D97706;padding:2px 7px;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;" title="{{ prod }}">
+                            {{ prod }}
+                        </span>
+                        {% endfor %}
+                        {% if agotados_por_pdv[key]|length > 4 %}
+                        <span style="font-size:10px;color:var(--text-muted)">+{{ agotados_por_pdv[key]|length - 4 }} más</span>
+                        {% endif %}
+                    </div>
+                    {% else %}
+                    <span style="color:var(--text-muted);font-size:12px">—</span>
+                    {% endif %}
                 </td>
             </tr>
             {% else %}
