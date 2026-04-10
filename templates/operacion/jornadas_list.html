@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Jornadas — Operación{% endblock %}
+{% block topbar_title %}Jornadas diarias{% endblock %}
+{% block content %}
+<div class="stats-row">
+    <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">{{ "{:,}".format(total) }}</div></div>
+    <div class="stat-card"><div class="stat-label">Página</div><div class="stat-value">{{ page }} / {{ total_pages }}</div></div>
+    <div class="stat-card"><div class="stat-label">Por página</div><div class="stat-value">{{ page_size }}</div></div>
+    <div class="stat-card"><div class="stat-label">Mostrando</div><div class="stat-value">{{ registros|length }}</div></div>
+</div>
+
+<form class="filter-bar" method="get">
+    <div style="display:flex;flex-direction:column;gap:4px;">
+        <label style="font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--text-muted)">Fecha inicio</label>
+        <input type="date" name="fecha_ini" value="{{ fecha_ini }}"
+               style="font-family:'DM Sans',sans-serif;font-size:13px;border:1px solid var(--border);border-radius:7px;padding:7px 12px;background:var(--bg);color:var(--text);outline:none;">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px;">
+        <label style="font-size:10px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--text-muted)">Fecha fin</label>
+        <input type="date" name="fecha_fin" value="{{ fecha_fin }}"
+               style="font-family:'DM Sans',sans-serif;font-size:13px;border:1px solid var(--border);border-radius:7px;padding:7px 12px;background:var(--bg);color:var(--text);outline:none;">
+    </div>
+    <input type="text" name="q" value="{{ q or '' }}" placeholder="Buscar incidencia...">
+    <button type="submit" class="btn-filter">Filtrar</button>
+    <a href="/operacion/jornadas" class="btn-clear">Limpiar</a>
+</form>
+
+<div class="card-clean">
+    <div class="card-clean-header"><h6>Jornadas diarias</h6></div>
+    <table class="data-table">
+        <thead>
+        <tr><th>ID</th><th>Fecha</th><th>Usuario ID</th><th>Cuadrilla ID</th><th>Tipo</th><th>Incidencia</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+        {% for item in registros %}
+        <tr>
+            <td><a href="/operacion/jornadas/{{ item.id }}">#{{ item.id }}</a></td>
+            <td class="num">{{ item.fecha.strftime('%d/%m/%Y') if item.fecha else '—' }}</td>
+            <td class="num">{{ item.usuario_id or '—' }}</td>
+            <td class="num">{{ item.cuadrilla_id or '—' }}</td>
+            <td>
+          <span class="badge-status {{ 'badge-info' if item.tipo == 0 else 'badge-ok' }}">
+            {{ 'Check-in' if item.tipo == 0 else 'Check-out' }}
+          </span>
+            </td>
+            <td style="font-size:12px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                title="{{ item.incidencia }}">{{ item.incidencia or '—' }}</td>
+            <td><span class="badge-status {{ 'badge-ok' if item.status else 'badge-no' }}">{{ 'Activo' if item.status else 'Inactivo' }}</span></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-muted)">Sin resultados.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    <div class="pagination-bar">
+        <span>{{ "{:,}".format(total) }} registros</span>
+        <div style="display:flex;gap:8px;">
+            <a href="?page={{ page-1 }}&fecha_ini={{ fecha_ini }}&fecha_fin={{ fecha_fin }}{% if q %}&q={{ q }}{% endif %}" class="{{ 'disabled' if page<=1 else '' }}">← Anterior</a>
+            <a href="?page={{ page+1 }}&fecha_ini={{ fecha_ini }}&fecha_fin={{ fecha_fin }}{% if q %}&q={{ q }}{% endif %}" class="{{ 'disabled' if page>=total_pages else '' }}">Siguiente →</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

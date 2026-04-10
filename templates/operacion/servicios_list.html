@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Servicios — Operación{% endblock %}
+{% block topbar_title %}Servicios{% endblock %}
+{% block content %}
+<div class="stats-row">
+    <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value">{{ "{:,}".format(total) }}</div></div>
+    <div class="stat-card"><div class="stat-label">Página</div><div class="stat-value">{{ page }} / {{ total_pages }}</div></div>
+    <div class="stat-card"><div class="stat-label">Por página</div><div class="stat-value">{{ page_size }}</div></div>
+    <div class="stat-card"><div class="stat-label">Mostrando</div><div class="stat-value">{{ registros|length }}</div></div>
+</div>
+<form class="filter-bar" method="get">
+    <input type="text" name="q" value="{{ q or '' }}" placeholder="Buscar clave o descripción...">
+    <button type="submit" class="btn-filter">Filtrar</button>
+    <a href="/operacion/servicios" class="btn-clear">Limpiar</a>
+</form>
+<div class="card-clean">
+    <div class="card-clean-header"><h6>Servicios</h6></div>
+    <table class="data-table">
+        <thead>
+        <tr><th>ID</th><th>Clave</th><th>Descripción</th><th>Productividad</th><th>Tiempo</th><th>PDV</th><th>Req. autorización</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+        {% for item in registros %}
+        <tr>
+            <td><a href="/operacion/servicios/{{ item.id }}">#{{ item.id }}</a></td>
+            <td class="num">{{ item.clave or '—' }}</td>
+            <td>{{ item.descripcion or '—' }}</td>
+            <td class="num">{{ item.productividad or '—' }}</td>
+            <td class="num">{{ item.tiempo or '—' }} min</td>
+            <td><span class="badge-status {{ 'badge-ok' if item.pdv else 'badge-no' }}">{{ 'Sí' if item.pdv else 'No' }}</span></td>
+            <td><span class="badge-status {{ 'badge-warn' if item.requiere_autorizacion else 'badge-no' }}">{{ 'Sí' if item.requiere_autorizacion else 'No' }}</span></td>
+            <td><span class="badge-status {{ 'badge-ok' if item.status else 'badge-no' }}">{{ 'Activo' if item.status else 'Inactivo' }}</span></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-muted)">Sin resultados.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    <div class="pagination-bar">
+        <span>{{ "{:,}".format(total) }} registros</span>
+        <div style="display:flex;gap:8px;">
+            <a href="?page={{ page-1 }}{% if q %}&q={{ q }}{% endif %}" class="{{ 'disabled' if page<=1 else '' }}">← Anterior</a>
+            <a href="?page={{ page+1 }}{% if q %}&q={{ q }}{% endif %}" class="{{ 'disabled' if page>=total_pages else '' }}">Siguiente →</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -9,6 +9,10 @@ from routers import eatics as eatics_router
 from routers import router_reportes
 from routers import router_precios
 
+from routers import router_operacion
+
+
+
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="GKMobile — Eatics")
@@ -18,6 +22,7 @@ templates = Jinja2Templates(directory="templates")
 app.include_router(eatics_router.router)
 app.include_router(router_reportes.router_reportes)
 app.include_router(router_precios.router_precios)
+app.include_router(router_operacion.router_operacion)
 
 
 def get_db():

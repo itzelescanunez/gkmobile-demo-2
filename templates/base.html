@@ -442,6 +442,15 @@
     </div>
 
     <div class="sidebar-section">
+        <div class="sidebar-section-label">Operación</div>
+        <a href="/operacion/promotores"  class="sidebar-link {% if catalogo == 'promotores'  %}active{% endif %}"><span class="dot"></span> Promotores</a>
+        <a href="/operacion/cuadrillas"  class="sidebar-link {% if catalogo == 'cuadrillas'  %}active{% endif %}"><span class="dot"></span> Cuadrillas</a>
+        <a href="/operacion/jornadas"    class="sidebar-link {% if catalogo == 'jornadas'    %}active{% endif %}"><span class="dot"></span> Jornadas</a>
+        <a href="/operacion/ausencias"   class="sidebar-link {% if catalogo == 'ausencias'   %}active{% endif %}"><span class="dot"></span> Ausencias</a>
+        <a href="/operacion/servicios"   class="sidebar-link {% if catalogo == 'servicios'   %}active{% endif %}"><span class="dot"></span> Servicios</a>
+    </div>
+
+    <div class="sidebar-section">
         <div class="sidebar-section-label">Reportes</div>
 
         <a href="/reportes/marca-pdv" class="sidebar-link {% if catalogo == 'reporte-marca-pdv' %}active{% endif %}">
