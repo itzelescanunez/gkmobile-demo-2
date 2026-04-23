@@ -5,6 +5,14 @@ def check_password():
     if st.session_state.get("authenticated"):
         return True
 
+    # Ocultar sidebar mientras no está autenticado
+    st.markdown("""
+        <style>
+            [data-testid="stSidebar"] { display: none; }
+            [data-testid="collapsedControl"] { display: none; }
+        </style>
+    """, unsafe_allow_html=True)
+
     st.title("GKMobile")
     st.subheader("Iniciar sesión")
 
@@ -16,7 +24,6 @@ def check_password():
     if submit:
         usuario_ok  = hmac.compare_digest(usuario,  st.secrets["LOGIN_USER"])
         password_ok = hmac.compare_digest(password, st.secrets["LOGIN_PASSWORD"])
-
         if usuario_ok and password_ok:
             st.session_state["authenticated"] = True
             st.rerun()

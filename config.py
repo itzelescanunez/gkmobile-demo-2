@@ -23,3 +23,33 @@ CLIENTES = {
     142: "Rabbit",
     149: "Eatics",
 }
+
+CADENAS_NORM = {
+    "CHEDRAUI": "Chedraui",
+    "SORIANA": "Soriana",
+    "SAMS CLUB": "Sam''s Club",
+    "SAMS": "Sam''s Club",
+    "WALMART": "Walmart",
+    "HEB": "HEB",
+    "LA COMER": "La Comer",
+    "COMERCIAL MEXICANA": "Comercial Mexicana",
+    "ALSUPER": "Alsuper",
+    "COSTCO": "Costco",
+    "CASA LEY": "Casa Ley",
+    "CALIMAX": "Calimax",
+}
+
+def sql_normalizar_cadena(col: str = "pv.cadena_str") -> str:
+    cases = "\n".join([
+        f"    WHEN UPPER(TRIM({col})) = '{k}' THEN '{v}'"
+        for k, v in CADENAS_NORM.items()
+    ])
+    return f"""
+        CASE
+{cases}
+            WHEN {col} IS NULL
+              OR TRIM({col}) = ''
+              OR UPPER(TRIM({col})) = 'NAN' THEN 'Sin cadena'
+            ELSE TRIM({col})
+        END
+    """

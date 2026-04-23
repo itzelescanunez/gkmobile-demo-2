@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from config import sql_normalizar_cadena
 
 import streamlit as st
 import duckdb
@@ -10,6 +11,13 @@ import plotly.graph_objects as go
 from datetime import date
 from config import parquet
 import io
+
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from app.path_setup import require_auth
+require_auth()
 
 st.set_page_config(page_title="Procesa — Sell Out", layout="wide")
 
@@ -158,16 +166,16 @@ def top_productos(cliente_id, fecha_ini, fecha_fin, canal_sel, top_n=15):
 def top_cadenas(cliente_id, fecha_ini, fecha_fin, canal_sel, top_n=15):
     return con.execute(f"""
         SELECT
-            COALESCE(pv.cadena_str, 'Sin cadena') AS cadena,
-            ROUND(SUM(s.monto), 0)                AS monto_total,
-            ROUND(SUM(s.piezas), 0)               AS piezas_total,
-            COUNT(DISTINCT s.punto_venta_id)      AS pdv
+            {sql_normalizar_cadena("pv.cadena_str")} AS cadena,
+            ROUND(SUM(s.monto), 0)                   AS monto_total,
+            ROUND(SUM(s.piezas), 0)                  AS piezas_total,
+            COUNT(DISTINCT s.punto_venta_id)         AS pdv
         FROM sell_out s
         LEFT JOIN punto_venta pv ON pv.id = s.punto_venta_id
         WHERE s.cliente_id = ?
           AND CAST(s.fecha AS DATE) BETWEEN ? AND ?
           {filtro_canal()}
-        GROUP BY pv.cadena_str
+        GROUP BY cadena
         ORDER BY monto_total DESC
         LIMIT {top_n}
     """, [cliente_id, str(fecha_ini), str(fecha_fin)]).df()

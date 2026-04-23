@@ -8,6 +8,14 @@ import plotly.graph_objects as go
 from datetime import date, timedelta
 from config import parquet, CLIENTES
 
+
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from app.path_setup import require_auth
+require_auth()
+
 INCIDENCIAS_MAP = {
     "SIN INCIDENCIAS": "Normal",
     "SIN INCIDENCIA": "Normal",

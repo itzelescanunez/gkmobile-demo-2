@@ -23,3 +23,18 @@ CLIENTES = {
     142: "Rabbit",
     149: "Eatics",
 }
+
+CADENAS_NORM = {
+    "CHEDRAUI": "Chedraui",
+    "SORIANA": "Soriana",
+    "SAMS CLUB": "Sam's Club",
+    "SAMS": "Sam's Club",
+    "WALMART": "Walmart",
+    "HEB": "HEB",
+    "LA COMER": "La Comer",
+    "COMERCIAL MEXICANA": "Comercial Mexicana",
+    "ALSUPER": "Alsuper",
+    "COSTCO": "Costco",
+    "CASA LEY": "Casa Ley",
+    "CALIMAX": "Calimax",
+}

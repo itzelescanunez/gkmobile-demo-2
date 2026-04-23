@@ -7,6 +7,13 @@ from streamlit_folium import st_folium
 import plotly.express as px
 from config import parquet, CLIENTES
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from app.path_setup import require_auth
+require_auth()
+
 st.set_page_config(page_title="Monitor Geolocalización", layout="wide")
 
 st.markdown("""

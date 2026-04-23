@@ -1,6 +1,11 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from typing import Type, Any
+from config import CADENAS_NORM
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 
 
 def listar_catalogo(
@@ -53,3 +58,22 @@ def listar_catalogo(
 
 def obtener_detalle(db: Session, modelo, registro_id: int):
     return db.query(modelo).filter(modelo.id == registro_id).first()
+
+def sql_normalizar_cadena(col: str = "pv.cadena_str") -> str:
+    """
+    Genera un CASE SQL para normalizar nombres de cadenas.
+    col: expresión SQL que contiene el nombre de la cadena
+    """
+    cases = "\n".join([
+        f"    WHEN UPPER(TRIM({col})) = '{k}' THEN '{v}'"
+        for k, v in CADENAS_NORM.items()
+    ])
+    return f"""
+        CASE
+{cases}
+            WHEN {col} IS NULL
+              OR TRIM({col}) = ''
+              OR UPPER(TRIM({col})) = 'NAN' THEN 'Sin cadena'
+            ELSE TRIM({col})
+        END
+    """

@@ -1,5 +1,4 @@
 import path_setup
-import path_setup
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -7,6 +6,13 @@ import plotly.graph_objects as go
 import duckdb
 from datetime import date
 from config import parquet
+
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from app.path_setup import require_auth
+require_auth()
 
 # ─────────────────────────────────────────
 # CONFIGURACIÓN
