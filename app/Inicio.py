@@ -1,8 +1,8 @@
 import sys
+import os
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import os
 import streamlit as st
 
 # ── Descarga parquets desde HF ANTES de importar config ──
