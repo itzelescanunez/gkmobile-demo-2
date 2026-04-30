@@ -1,10 +1,13 @@
 from pathlib import Path
 import os
 
-BASE_DIR    = Path(__file__).parent
-PARQUET_DIR = Path(os.getenv("PARQUET_DIR", str(BASE_DIR / "data/parquet")))
+BASE_DIR = Path(__file__).parent
+
+def _get_parquet_dir():
+    return Path(os.getenv("PARQUET_DIR", str(BASE_DIR / "data/parquet")))
 
 def parquet(nombre, cliente=None):
+    PARQUET_DIR = _get_parquet_dir()
     if cliente:
         return str(PARQUET_DIR / cliente / f"{nombre}.parquet")
     for sub in ["global", "eatics", "procesa"]:
