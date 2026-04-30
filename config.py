@@ -4,17 +4,32 @@ import os
 BASE_DIR    = Path(__file__).parent
 PARQUET_DIR = Path(os.getenv("PARQUET_DIR", str(BASE_DIR / "data/parquet")))
 
-# ── Descarga desde Hugging Face si no existen localmente ──
 def _init_parquets():
+    # Streamlit Cloud inyecta secrets como variables de entorno con prefijo
+    # Intentar leer directo del archivo de secrets si existe
     hf_token   = os.getenv("HF_TOKEN")
     hf_dataset = os.getenv("HF_DATASET")
 
+    # Fallback: leer desde .streamlit/secrets.toml si existe localmente
+    if not hf_token:
+        try:
+            import toml
+            secrets_path = BASE_DIR / ".streamlit" / "secrets.toml"
+            if secrets_path.exists():
+                secrets = toml.load(str(secrets_path))
+                hf_token   = secrets.get("HF_TOKEN")
+                hf_dataset = secrets.get("HF_DATASET")
+        except Exception:
+            pass
+
     if not hf_token or not hf_dataset:
-        return  # local — no hacer nada
+        return
 
     cache_dir = Path("/tmp/gkmobile_parquets")
     if cache_dir.exists() and any(cache_dir.rglob("*.parquet")):
-        return  # ya descargados en esta sesión
+        global PARQUET_DIR
+        PARQUET_DIR = cache_dir
+        return
 
     print("Descargando parquets desde Hugging Face...")
     from huggingface_hub import snapshot_download
@@ -26,8 +41,6 @@ def _init_parquets():
         ignore_patterns=["*.md", ".gitattributes"],
     )
     print("✅ Parquets listos.")
-
-    # Apuntar PARQUET_DIR al cache
     global PARQUET_DIR
     PARQUET_DIR = cache_dir
 
