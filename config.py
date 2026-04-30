@@ -5,12 +5,11 @@ BASE_DIR    = Path(__file__).parent
 PARQUET_DIR = Path(os.getenv("PARQUET_DIR", str(BASE_DIR / "data/parquet")))
 
 def _init_parquets():
-    # Streamlit Cloud inyecta secrets como variables de entorno con prefijo
-    # Intentar leer directo del archivo de secrets si existe
+    global PARQUET_DIR  # declarar al inicio de la función
+
     hf_token   = os.getenv("HF_TOKEN")
     hf_dataset = os.getenv("HF_DATASET")
 
-    # Fallback: leer desde .streamlit/secrets.toml si existe localmente
     if not hf_token:
         try:
             import toml
@@ -27,7 +26,6 @@ def _init_parquets():
 
     cache_dir = Path("/tmp/gkmobile_parquets")
     if cache_dir.exists() and any(cache_dir.rglob("*.parquet")):
-        global PARQUET_DIR
         PARQUET_DIR = cache_dir
         return
 
@@ -41,7 +39,6 @@ def _init_parquets():
         ignore_patterns=["*.md", ".gitattributes"],
     )
     print("✅ Parquets listos.")
-    global PARQUET_DIR
     PARQUET_DIR = cache_dir
 
 _init_parquets()
