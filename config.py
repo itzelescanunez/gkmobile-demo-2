@@ -4,45 +4,6 @@ import os
 BASE_DIR    = Path(__file__).parent
 PARQUET_DIR = Path(os.getenv("PARQUET_DIR", str(BASE_DIR / "data/parquet")))
 
-def _init_parquets():
-    global PARQUET_DIR  # declarar al inicio de la función
-
-    hf_token   = os.getenv("HF_TOKEN")
-    hf_dataset = os.getenv("HF_DATASET")
-
-    if not hf_token:
-        try:
-            import toml
-            secrets_path = BASE_DIR / ".streamlit" / "secrets.toml"
-            if secrets_path.exists():
-                secrets = toml.load(str(secrets_path))
-                hf_token   = secrets.get("HF_TOKEN")
-                hf_dataset = secrets.get("HF_DATASET")
-        except Exception:
-            pass
-
-    if not hf_token or not hf_dataset:
-        return
-
-    cache_dir = Path("/tmp/gkmobile_parquets")
-    if cache_dir.exists() and any(cache_dir.rglob("*.parquet")):
-        PARQUET_DIR = cache_dir
-        return
-
-    print("Descargando parquets desde Hugging Face...")
-    from huggingface_hub import snapshot_download
-    snapshot_download(
-        repo_id=hf_dataset,
-        repo_type="dataset",
-        token=hf_token,
-        local_dir=str(cache_dir),
-        ignore_patterns=["*.md", ".gitattributes"],
-    )
-    print("✅ Parquets listos.")
-    PARQUET_DIR = cache_dir
-
-_init_parquets()
-
 def parquet(nombre, cliente=None):
     if cliente:
         return str(PARQUET_DIR / cliente / f"{nombre}.parquet")
