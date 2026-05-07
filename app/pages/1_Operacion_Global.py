@@ -1,204 +1,17 @@
-
 import pandas as pd
 import streamlit as st
 import duckdb
 import io
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import date, timedelta
+from datetime import date
 from config import parquet, CLIENTES
-
 
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-
 from app.path_setup import require_auth
 require_auth()
-
-INCIDENCIAS_MAP = {
-    "SIN INCIDENCIAS": "Normal",
-    "SIN INCIDENCIA": "Normal",
-    "SIN INCIDENCIA.": "Normal",
-    "OK": "Normal",
-    "ASISTENCIA": "Normal",
-    "FALTA": "Ausencia",
-    "FALTA INJUSTIFICADA": "Ausencia",
-    "BAJA": "Ausencia",
-    "INCAPACIDAD": "Ausencia",
-    "VACACIONES": "Ausencia",
-    "VACANTE": "Ausencia",
-    "SIN EQUIPO": "Operacional",
-    "RETARDO": "Operacional",
-    "SIN REPORTE AL CORTE": "Operacional",
-    "SIN INFORMACION EN PLATAFORMA": "Operacional",
-    "ESPERANDO ENVIO DE INFORMACION": "Operacional",
-    "DESCANSO": "Descanso",
-    "FESTIVO": "Descanso",
-    "APOYO A RUTA FUERA DE PLAN": "Especial",
-    "CHECK IN FUERA DE TIENDA": "Especial",
-    # Extras
-    "FI": "Ausencia",           # FALTA INJUSTIFICADA abreviada
-    "FJ": "Ausencia",           # FALTA JUSTIFICADA abreviada
-    "VACACNTE": "Ausencia",     # typo de VACANTE
-    "INCAPACIAD": "Ausencia",   # typo de INCAPACIDAD
-    "VACANTE ": "Ausencia",     # con espacio
-    "FALTA ": "Ausencia",       # con espacio
-    "DESCANSO ": "Descanso",    # con espacio
-}
-
-COLORES_INCIDENCIA = {
-    "Normal":      "#22C55E",
-    "Ausencia":    "#EF4444",
-    "Operacional": "#F59E0B",
-    "Descanso":    "#3B82F6",
-    "Especial":    "#8B5CF6",
-}
-
-@st.cache_data(ttl=300)
-def detalle_incidencias(cliente_id, fecha_ini, fecha_fin):
-    return con.execute("""
-                       SELECT
-                           CAST(a.fecha_planeada AS DATE)     AS fecha,
-                           u.user_real_name                    AS promotor,
-                           u.username                          AS usuario,
-                           COALESCE(c.ruta, 'Sin ruta')       AS ruta,
-                           COALESCE(c.entidad, 'Sin entidad') AS entidad,
-                           COALESCE(c.puesto, 'Sin puesto')   AS puesto,
-                           j.incidencia                        AS incidencia_original,
-                           UPPER(TRIM(j.incidencia))           AS incidencia_normalizada
-                       FROM actividad_real a
-                                LEFT JOIN usuario u   ON u.id = a.usuario_id
-                                LEFT JOIN cuadrilla c ON c.id = a.cuadrilla_id
-                                LEFT JOIN jornada j
-                                          ON j.usuario_id = a.usuario_id
-                                              AND CAST(j.fecha AS DATE) = CAST(a.fecha_planeada AS DATE)
-                                              AND j.cliente_id = ?
-                       WHERE a.cliente_id = ?
-                         AND CAST(a.fecha_planeada AS DATE) BETWEEN ? AND ?
-                         AND a.fecha_real_inicio IS NOT NULL
-                         AND j.incidencia IS NOT NULL
-                         AND TRIM(j.incidencia) != ''
-                       ORDER BY a.fecha_planeada, u.user_real_name
-                       """, [cliente_id, cliente_id, str(fecha_ini), str(fecha_fin)]).df()
-
-@st.cache_data(ttl=300)
-def detalle_jornada(cliente_id, fecha_ini, fecha_fin):
-    return con.execute("""
-                       SELECT
-                           CAST(a.fecha_planeada AS DATE)             AS fecha,
-                           u.user_real_name                            AS promotor,
-                           u.username                                  AS usuario,
-                           COALESCE(c.ruta, 'Sin ruta')               AS ruta,
-                           COALESCE(c.entidad, 'Sin entidad')         AS entidad,
-                           COALESCE(c.puesto, 'Sin puesto')           AS puesto,
-                           TRY_CAST(MIN(a.fecha_real_inicio) AS TIMESTAMP) AS inicio_jornada,
-                           TRY_CAST(MAX(a.fecha_real_final)  AS TIMESTAMP) AS fin_jornada,
-                           ROUND(EPOCH(
-                                         MAX(TRY_CAST(a.fecha_real_final AS TIMESTAMP)) -
-                                         MIN(TRY_CAST(a.fecha_real_inicio AS TIMESTAMP))
-                                 ) / 3600.0, 2)                             AS horas_trabajadas,
-                           j.incidencia,
-                           CASE WHEN UPPER(TRIM(j.incidencia))
-                               IN ('FALTA','FALTA INJUSTIFICADA','BAJA','INCAPACIDAD',
-                                   'VACACIONES','VACANTE','FI','FJ')
-                                    THEN 'Sí' ELSE 'No'
-                               END                                        AS es_ausencia
-                       FROM actividad_real a
-                                LEFT JOIN usuario u    ON u.id = a.usuario_id
-                                LEFT JOIN cuadrilla c  ON c.id = a.cuadrilla_id
-                                LEFT JOIN jornada j
-                                          ON j.usuario_id = a.usuario_id
-                                              AND CAST(j.fecha AS DATE) = CAST(a.fecha_planeada AS DATE)
-                                              AND j.cliente_id = ?
-                       WHERE a.cliente_id = ?
-                         AND CAST(a.fecha_planeada AS DATE) BETWEEN ? AND ?
-                         AND a.fecha_real_inicio IS NOT NULL
-                       GROUP BY a.fecha_planeada, a.usuario_id, u.user_real_name, u.username,
-                                c.ruta, c.entidad, c.puesto, j.incidencia
-                       ORDER BY a.fecha_planeada, u.user_real_name
-                       """, [cliente_id, cliente_id, str(fecha_ini), str(fecha_fin)]).df()
-
-
-@st.cache_data(ttl=300)
-def detalle_actividades(cliente_id, fecha_ini, fecha_fin):
-    return con.execute("""
-                       SELECT
-                           CAST(a.fecha_planeada AS DATE)         AS fecha,
-                           u.user_real_name                        AS promotor,
-                           u.username                              AS usuario,
-                           COALESCE(c.ruta, 'Sin ruta')            AS ruta,
-                           COALESCE(c.entidad, 'Sin entidad')      AS entidad,
-                           pv.sucursal                             AS punto_venta,
-                           pv.cadena_str                           AS cadena,
-                           pv.municipio_str                        AS municipio,
-                           pv.estado_str                           AS estado,
-                           TRY_CAST(a.fecha_real_inicio AS TIMESTAMP) AS hora_inicio,
-                           TRY_CAST(a.fecha_real_final  AS TIMESTAMP) AS hora_fin,
-                           ROUND(EPOCH(
-                                         TRY_CAST(a.fecha_real_final AS TIMESTAMP) -
-                                         TRY_CAST(a.fecha_real_inicio AS TIMESTAMP)
-                                 ) / 60.0, 0)                            AS minutos_visita,
-                           CASE WHEN a.is_no_planeada = 1
-                                    THEN 'Fuera de ruta' ELSE 'En ruta'
-                               END                                     AS tipo_visita,
-                           CASE WHEN a.fecha_real_inicio IS NOT NULL
-                                    THEN 'Ejecutada' ELSE 'No ejecutada'
-                               END                                     AS estatus
-                       FROM actividad_real a
-                                LEFT JOIN usuario u    ON u.id = a.usuario_id
-                                LEFT JOIN cuadrilla c  ON c.id = a.cuadrilla_id
-                                LEFT JOIN punto_venta pv ON pv.id = a.punto_venta_id
-                       WHERE a.cliente_id = ?
-                         AND CAST(a.fecha_planeada AS DATE) BETWEEN ? AND ?
-                       ORDER BY a.fecha_planeada, u.user_real_name
-                       """, [cliente_id, str(fecha_ini), str(fecha_fin)]).df()
-
-
-@st.cache_data(ttl=300)
-def incidencias_resumen(cliente_id, fecha_ini, fecha_fin):
-    return con.execute("""
-                       SELECT
-                           UPPER(TRIM(j.incidencia)) AS incidencia_norm,
-                           COUNT(*)                  AS total
-                       FROM actividad_real a
-                                LEFT JOIN jornada j
-                                          ON j.usuario_id = a.usuario_id
-                                              AND CAST(j.fecha AS DATE) = CAST(a.fecha_planeada AS DATE)
-                                              AND j.cliente_id = ?
-                       WHERE a.cliente_id = ?
-                         AND CAST(a.fecha_planeada AS DATE) BETWEEN ? AND ?
-                         AND a.fecha_real_inicio IS NOT NULL
-                         AND j.incidencia IS NOT NULL
-                         AND TRIM(j.incidencia) != ''
-                       GROUP BY UPPER(TRIM(j.incidencia))
-                       ORDER BY total DESC
-                       """, [cliente_id, cliente_id, str(fecha_ini), str(fecha_fin)]).df()
-
-
-@st.cache_data(ttl=300)
-def rutas_resumen(cliente_id, fecha_ini, fecha_fin, canal_sel):
-    return con.execute("""
-                       SELECT
-                           COALESCE(c.ruta, 'Sin ruta')      AS ruta,
-                           COALESCE(c.entidad, 'Sin entidad') AS entidad,
-                           COUNT(DISTINCT ad.usuario_id)      AS promotores,
-                           COUNT(*)                           AS dias_activos,
-                           ROUND(AVG(ad.horas_laboradas), 1)  AS horas_promedio,
-                           SUM(CASE WHEN j.ausencia_id IS NOT NULL THEN 1 ELSE 0 END) AS ausencias
-                       FROM actividad_dia ad
-                                LEFT JOIN cuadrilla c ON c.id = ad.cuadrilla_id
-                                LEFT JOIN jornada j
-                                          ON j.usuario_id = ad.usuario_id
-                                              AND CAST(j.fecha AS DATE) = ad.dia
-                                              AND j.cliente_id = ?
-                       WHERE ad.cliente_id = ?
-                         AND ad.dia BETWEEN ? AND ?
-                       GROUP BY c.ruta, c.entidad
-                       ORDER BY promotores DESC
-                       """, [cliente_id, cliente_id, str(fecha_ini), str(fecha_fin)]).df()
-
-
 
 st.set_page_config(page_title="Operación Global", layout="wide")
 
@@ -207,47 +20,83 @@ st.set_page_config(page_title="Operación Global", layout="wide")
 # ─────────────────────────────────────────
 st.markdown("""
 <style>
-    .metric-card {
-        background: #ffffff;
-        border: 1px solid #E2E4E9;
-        border-radius: 12px;
-        padding: 20px;
-        text-align: center;
-    }
-    .metric-value { font-size: 2rem; font-weight: 700; margin: 0; color: #1A1D23; }
-    .metric-label { font-size: 0.75rem; color: #6B7280; text-transform: uppercase;
-                    letter-spacing: 0.08em; margin: 0; }
-    .section-title { font-size: 1.1rem; font-weight: 600; color: #1A1D23;
-                     border-left: 4px solid #0057FF; padding-left: 10px; margin-bottom: 16px; }
+    .metric-card { background:#ffffff; border:1px solid #E2E4E9; border-radius:12px;
+                   padding:16px; text-align:center; }
+    .metric-value { font-size:1.6rem; font-weight:700; margin:0; color:#1A1D23; }
+    .metric-label { font-size:0.7rem; color:#6B7280; text-transform:uppercase;
+                    letter-spacing:0.08em; margin:0 0 4px; }
+    .badge { display:inline-block; padding:2px 8px; border-radius:20px;
+             font-size:0.75rem; font-weight:600; }
+    .badge-green  { background:#DCFCE7; color:#166534; }
+    .badge-yellow { background:#FEF9C3; color:#854D0E; }
+    .badge-red    { background:#FEE2E2; color:#991B1B; }
+    .section-title { font-size:1.1rem; font-weight:600; color:#1A1D23;
+                     border-left:4px solid #0057FF; padding-left:10px; margin-bottom:16px; }
+    .table-header { background:#F8F9FA; font-weight:600; font-size:0.75rem;
+                    color:#6B7280; text-transform:uppercase; letter-spacing:0.05em; }
+    div[data-testid="stExpander"] { border:1px solid #E2E4E9; border-radius:8px; }
 </style>
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────
-# CONEXIÓN DUCKDB
+# CONEXIÓN
 # ─────────────────────────────────────────
 @st.cache_resource
 def get_con():
     con = duckdb.connect()
-    # Parquets condensados para KPIs y tendencia
-    con.execute(f"CREATE OR REPLACE VIEW actividad_mes  AS SELECT * FROM read_parquet('{parquet('actividad_mes', 'global')}')")
-    con.execute(f"CREATE OR REPLACE VIEW actividad_dia  AS SELECT * FROM read_parquet('{parquet('actividad_dia', 'global')}')")
-    # Original solo para Monitor Geo (necesita coordenadas GPS)
-    con.execute(f"CREATE OR REPLACE VIEW actividad      AS SELECT * FROM read_parquet('{parquet('actividad', 'global')}')")
-    con.execute(f"CREATE OR REPLACE VIEW actividad_real AS SELECT * FROM read_parquet('{parquet('actividad', 'global')}')")
-    con.execute(f"CREATE OR REPLACE VIEW jornada        AS SELECT * FROM read_parquet('{parquet('jornada_diaria', 'global')}')")
-    con.execute(f"CREATE OR REPLACE VIEW usuario        AS SELECT * FROM read_parquet('{parquet('user', 'global')}')")
-    con.execute(f"CREATE OR REPLACE VIEW cliente        AS SELECT * FROM read_parquet('{parquet('cliente', 'global')}')")
-    con.execute(f"CREATE OR REPLACE VIEW cuadrilla      AS SELECT * FROM read_parquet('{parquet('cuadrilla', 'global')}')")
-    con.execute(f"CREATE OR REPLACE VIEW ausencia       AS SELECT * FROM read_parquet('{parquet('ausencia', 'global')}')")
-    con.execute(f"CREATE OR REPLACE VIEW aus_usuario    AS SELECT * FROM read_parquet('{parquet('ausencia_usuario', 'global')}')")
-    con.execute(f"CREATE OR REPLACE VIEW user_cliente   AS SELECT * FROM read_parquet('{parquet('user_cliente', 'global')}')")
-    con.execute(f"CREATE OR REPLACE VIEW punto_venta    AS SELECT * FROM read_parquet('{parquet('punto_venta', 'global')}')")
+    con.execute(f"CREATE OR REPLACE VIEW actividad  AS SELECT * FROM read_parquet('{parquet('actividad', 'global')}')")
+    con.execute(f"CREATE OR REPLACE VIEW jornada    AS SELECT * FROM read_parquet('{parquet('jornada_diaria', 'global')}')")
+    con.execute(f"CREATE OR REPLACE VIEW usuario    AS SELECT * FROM read_parquet('{parquet('user', 'global')}')")
+    con.execute(f"CREATE OR REPLACE VIEW cuadrilla  AS SELECT * FROM read_parquet('{parquet('cuadrilla', 'global')}')")
+    con.execute(f"CREATE OR REPLACE VIEW punto_venta AS SELECT * FROM read_parquet('{parquet('punto_venta', 'global')}')")
     return con
 
 con = get_con()
 
 # ─────────────────────────────────────────
-# SIDEBAR — FILTROS
+# HELPERS
+# ─────────────────────────────────────────
+
+def safe_int(v):
+    try:
+        return int(v) if pd.notna(v) else 0
+    except:
+        return 0
+
+
+def fmt_hhmm(seg_expr):
+    return f"""
+        LPAD(CAST(CAST(FLOOR(({seg_expr}) / 3600) AS INTEGER) AS VARCHAR), 2, '0') || ':' ||
+        LPAD(CAST(CAST(FLOOR((({seg_expr}) % 3600) / 60) AS INTEGER) AS VARCHAR), 2, '0')
+    """
+
+def badge(valor, verde, amarillo):
+    if valor is None or valor == '':
+        return ''
+    try:
+        v = float(str(valor).replace('%',''))
+    except:
+        return str(valor)
+    if v >= verde:
+        cls = 'badge-green'
+    elif v >= amarillo:
+        cls = 'badge-yellow'
+    else:
+        cls = 'badge-red'
+    return f'<span class="badge {cls}">{valor}</span>'
+
+def metric_card(col, label, value, sub=None):
+    sub_html = f'<p style="font-size:0.7rem;color:#9CA3AF;margin:2px 0 0">{sub}</p>' if sub else ''
+    col.markdown(f"""
+    <div class="metric-card">
+        <p class="metric-label">{label}</p>
+        <p class="metric-value">{value}</p>
+        {sub_html}
+    </div>
+    """, unsafe_allow_html=True)
+
+# ─────────────────────────────────────────
+# SIDEBAR
 # ─────────────────────────────────────────
 st.sidebar.title("Operación Global")
 
@@ -258,96 +107,144 @@ cliente_id  = clientes_opciones[cliente_sel]
 @st.cache_data(ttl=600)
 def ultimo_mes_con_datos(cliente_id):
     row = con.execute("""
-                      SELECT MAX(anio) as anio, MAX(mes) as mes
-                      FROM actividad_mes
-                      WHERE cliente_id = ?
-                        AND anio BETWEEN 2015 AND 2030
+                      SELECT MAX(CAST(fecha_planeada AS DATE))
+                      FROM actividad WHERE cliente_id = ?
+                          AND YEAR(CAST(fecha_planeada AS DATE)) BETWEEN 2015 AND 2026
                       """, [cliente_id]).fetchone()
-    from datetime import date
-    if row and row[0]:
-        return date(int(row[0]), int(row[1]), 1)
-    return date.today().replace(day=1)
+    return row[0] if row and row[0] else date.today()
 
-ultima     = ultimo_mes_con_datos(cliente_id)
-inicio_def = ultima.replace(day=1)
-fecha_ini  = st.sidebar.date_input("Fecha inicio", inicio_def)
-fecha_fin  = st.sidebar.date_input("Fecha fin", ultima)
-canal_sel = None
+ultima    = ultimo_mes_con_datos(cliente_id)
+fecha_ini = st.sidebar.date_input("Fecha inicio", ultima.replace(day=1))
+fecha_fin = st.sidebar.date_input("Fecha fin",    ultima)
 
 # ─────────────────────────────────────────
-# DATOS
+# QUERY PRINCIPAL DE KPIs
 # ─────────────────────────────────────────
-@st.cache_data(ttl=300)
-def kpis_operacion(cliente_id, fecha_ini, fecha_fin, canal_sel):
-    anio_ini = fecha_ini.year
-    mes_ini  = fecha_ini.month
-    anio_fin = fecha_fin.year
-    mes_fin  = fecha_fin.month
-    return con.execute("""
-                       SELECT
-                           COUNT(DISTINCT am.usuario_id)                               AS promotores_activos,
-                           ROUND(SUM(am.horas_totales), 1)                             AS total_horas,
-                           ROUND(AVG(am.horas_totales / NULLIF(am.dias_activos,0)), 1) AS promedio_horas,
-                           SUM(CASE WHEN j.ausencia_id IS NOT NULL THEN 1 END)         AS ausencias,
-                           SUM(am.dias_activos)                                        AS dias_trabajados,
-                           SUM(am.pdvs_visitados)                                      AS pdv_visitados
-                       FROM actividad_mes am
-                                LEFT JOIN jornada j
-                                          ON j.usuario_id = am.usuario_id
-                                              AND j.cliente_id = am.cliente_id
-                                              AND CAST(j.fecha AS DATE) BETWEEN ? AND ?
-                       WHERE am.cliente_id = ?
-                         AND (am.anio * 100 + am.mes) BETWEEN ? AND ?
-                       """, [str(fecha_ini), str(fecha_fin),
-                             cliente_id,
-                             anio_ini * 100 + mes_ini,
-                             anio_fin * 100 + mes_fin]).fetchone()
-
-
-
+HORA_OBJ_INICIO = 8 * 3600   # 08:00
+HORA_OBJ_JORNADA = 8 * 3600  # 8 horas
 
 @st.cache_data(ttl=300)
-def tendencia_diaria(cliente_id, fecha_ini, fecha_fin, canal_sel):
-    return con.execute("""
-                       SELECT
-                           ad.dia,
-                           COUNT(DISTINCT ad.usuario_id)                           AS promotores,
-                           ROUND(AVG(ad.horas_laboradas), 2)                       AS horas_promedio,
-                           SUM(CASE WHEN j.ausencia_id IS NOT NULL THEN 1 ELSE 0 END) AS ausencias
-                       FROM actividad_dia ad
-                                LEFT JOIN jornada j
-                                          ON j.usuario_id = ad.usuario_id
-                                              AND TRY_CAST(j.fecha AS DATE) = ad.dia
-                                              AND j.cliente_id = ?
-                       WHERE ad.cliente_id = ?
-                         AND ad.dia BETWEEN ? AND ?
-                       GROUP BY ad.dia
-                       ORDER BY ad.dia
-                       """, [cliente_id, cliente_id, str(fecha_ini), str(fecha_fin)]).df()
-
+def kpis_por_usuario(cliente_id, fecha_ini, fecha_fin):
+    return con.execute(f"""
+        WITH usuarios_sistema AS (
+            -- Excluir usuarios con >50 visitas/día (usuarios sistema)
+            -- o con username que contiene punto y no son promotores reales
+            SELECT usuario_id
+            FROM (
+                SELECT usuario_id,
+                       CAST(fecha_planeada AS DATE) as dia,
+                       COUNT(*) as cnt
+                FROM actividad
+                WHERE cliente_id = {cliente_id}
+                  AND CAST(fecha_planeada AS DATE) BETWEEN '{fecha_ini}' AND '{fecha_fin}'
+                GROUP BY usuario_id, CAST(fecha_planeada AS DATE)
+            )
+            GROUP BY usuario_id HAVING MAX(cnt) > 50
+            UNION
+            -- Excluir usuarios con username tipo email (auditores/sistema)
+            SELECT u.id FROM usuario u
+            WHERE u.username LIKE '%.%'
+              AND u.cliente_id = {cliente_id}
+        ),
+        visitas AS (
+            SELECT
+                a.usuario_id,
+                u.username,
+                u.user_real_name,
+                c.entidad,
+                CAST(a.fecha_planeada AS DATE)              AS dia,
+                TRY_CAST(a.fecha_real_inicio AS TIMESTAMP)  AS inicio,
+                TRY_CAST(a.fecha_real_final  AS TIMESTAMP)  AS fin,
+                EPOCH(
+                    TRY_CAST(a.fecha_real_final AS TIMESTAMP) -
+                    TRY_CAST(a.fecha_real_inicio AS TIMESTAMP)
+                ) / 60.0                                    AS min_en_pdv
+            FROM actividad a
+            LEFT JOIN usuario u   ON u.id = a.usuario_id
+            LEFT JOIN (
+                SELECT id,
+                       FIRST(entidad ORDER BY entidad NULLS LAST) AS entidad
+                FROM cuadrilla
+                WHERE entidad IS NOT NULL AND TRIM(entidad) != ''
+                GROUP BY id
+            ) c ON c.id = TRY_CAST(a.cuadrilla_id AS DOUBLE)
+            WHERE a.cliente_id = {cliente_id}
+              AND CAST(a.fecha_planeada AS DATE) BETWEEN '{fecha_ini}' AND '{fecha_fin}'
+              AND a.usuario_id NOT IN (SELECT usuario_id FROM usuarios_sistema)
+        ),
+        por_dia AS (
+            SELECT
+                usuario_id, username, user_real_name, entidad, dia,
+                COUNT(*)                                        AS planeadas,
+                COUNT(inicio)                                   AS realizadas,
+                MIN(EPOCH(inicio) % 86400)                      AS seg_inicio,
+                MAX(EPOCH(fin)   % 86400)                       AS seg_fin,
+                CASE WHEN MAX(fin) > MIN(inicio)
+                     THEN EPOCH(MAX(fin) - MIN(inicio)) / 3600.0
+                     ELSE NULL END                              AS horas_jornada,
+                -- Clamp horas_en_pdv a máximo horas_jornada para evitar negativos
+                LEAST(
+                    SUM(CASE WHEN min_en_pdv > 0
+                        THEN min_en_pdv ELSE 0 END) / 60.0,
+                    CASE WHEN MAX(fin) > MIN(inicio)
+                         THEN EPOCH(MAX(fin) - MIN(inicio)) / 3600.0
+                         ELSE NULL END
+                )                                               AS horas_en_pdv
+            FROM visitas
+            GROUP BY usuario_id, username, user_real_name, entidad, dia
+        )
+        SELECT
+            usuario_id,
+            username,
+            user_real_name,
+            COALESCE(entidad, 'Sin entidad')                    AS entidad,
+            -- Promotores activos (días con al menos 1 visita)
+            COUNT(DISTINCT CASE WHEN realizadas > 0
+                THEN dia END)                                   AS dias_activos,
+            -- Hora inicio promedio
+            {fmt_hhmm('AVG(CASE WHEN seg_inicio IS NOT NULL AND realizadas > 0 THEN seg_inicio END)')} AS hora_inicio,
+            -- % cumplimiento hora inicio (antes 8am)
+            ROUND(COUNT(CASE WHEN seg_inicio <= {HORA_OBJ_INICIO}
+                AND realizadas > 0 THEN 1 END) * 100.0 /
+                NULLIF(COUNT(CASE WHEN realizadas > 0 THEN 1 END), 0), 0) AS pct_inicio,
+            -- Hora fin promedio
+            {fmt_hhmm('AVG(CASE WHEN seg_fin IS NOT NULL AND realizadas > 0 THEN seg_fin END)')} AS hora_fin,
+            -- % jornada >= 8hrs
+            ROUND(COUNT(CASE WHEN horas_jornada >= 8 THEN 1 END) * 100.0 /
+                NULLIF(COUNT(CASE WHEN realizadas > 0 THEN 1 END), 0), 0) AS pct_fin,
+            -- T. laborado promedio (HH:MM)
+            {fmt_hhmm('AVG(CASE WHEN horas_jornada > 0 AND horas_jornada <= 16 THEN horas_jornada * 3600 END)')} AS t_laborado,
+            -- T. traslados (HH:MM)
+            {fmt_hhmm('AVG(CASE WHEN horas_jornada > 0 AND horas_jornada <= 16 THEN (horas_jornada - horas_en_pdv) * 3600 END)')} AS t_traslado,
+            -- % traslados del total jornada
+            ROUND(AVG(CASE WHEN horas_jornada > 0 AND horas_jornada <= 16
+                THEN (horas_jornada - horas_en_pdv) / horas_jornada * 100 END), 0) AS pct_traslado,
+            -- T. en PDV (HH:MM)
+            {fmt_hhmm('AVG(CASE WHEN horas_en_pdv > 0 THEN horas_en_pdv * 3600 END)')} AS t_pdv,
+            -- % PDV del total jornada
+            ROUND(AVG(CASE WHEN horas_jornada > 0 AND horas_jornada <= 16
+                THEN horas_en_pdv / horas_jornada * 100 END), 0) AS pct_pdv,
+            -- Visitas promedio por día
+            ROUND(AVG(CASE WHEN realizadas > 0 THEN realizadas END), 1) AS visitas_prom,
+            -- Plan y cumplimiento
+            SUM(planeadas)                                      AS plan,
+            SUM(realizadas)                                     AS realizadas_total,
+            ROUND(SUM(realizadas) * 100.0 /
+                NULLIF(SUM(planeadas), 0), 0)                   AS pct_visitas
+        FROM por_dia
+        GROUP BY usuario_id, username, user_real_name, entidad
+        ORDER BY entidad, username
+    """).df()
 
 @st.cache_data(ttl=300)
-def itinerario_promotor(cliente_id, fecha_ini, fecha_fin):
-    return con.execute("""
-                       SELECT
-                           ad.dia                                                  AS fecha,
-                           u.user_real_name                                        AS promotor,
-                           COALESCE(c.ruta, 'Sin ruta')                           AS ruta,
-                           COALESCE(c.entidad, 'Sin entidad')                     AS entidad,
-                           STRFTIME(ad.primer_checkin, '%H:%M')                   AS hora_entrada,
-                           STRFTIME(ad.ultimo_checkout, '%H:%M')                  AS hora_salida,
-                           ROUND(ad.horas_laboradas * 60, 0)                      AS minutos,
-                           ad.total_visitas,
-                           ad.visitas_planeadas,
-                           ad.visitas_fuera_ruta,
-                           ad.pdvs_visitados
-                       FROM actividad_dia ad
-                                LEFT JOIN usuario u   ON u.id = ad.usuario_id
-                                LEFT JOIN cuadrilla c ON c.id = ad.cuadrilla_id
-                       WHERE ad.cliente_id = ?
-                         AND ad.dia BETWEEN ? AND ?
-                       ORDER BY ad.dia, u.user_real_name
-                       """, [cliente_id, str(fecha_ini), str(fecha_fin)]).df()
+def ausencias_periodo(cliente_id, fecha_ini, fecha_fin):
+    return con.execute(f"""
+        SELECT COUNT(*) as ausencias
+        FROM jornada
+        WHERE cliente_id = {cliente_id}
+          AND CAST(fecha AS DATE) BETWEEN '{fecha_ini}' AND '{fecha_fin}'
+          AND ausencia_id IS NOT NULL
+    """).fetchone()[0] or 0
 
 # ─────────────────────────────────────────
 # RENDER
@@ -356,268 +253,273 @@ st.title("📊 Operación Global")
 st.caption(f"{cliente_sel}  ·  {fecha_ini.strftime('%d %b %Y')} — {fecha_fin.strftime('%d %b %Y')}")
 st.divider()
 
-with st.spinner("Cargando KPIs..."):
-    kpis  = kpis_operacion(cliente_id, fecha_ini, fecha_fin, canal_sel)
+with st.spinner("Cargando datos..."):
+    df = kpis_por_usuario(cliente_id, fecha_ini, fecha_fin)
+    ausencias = ausencias_periodo(cliente_id, fecha_ini, fecha_fin)
 
-# KPIs principales
-col1, col2, col3, col4, col5 = st.columns(5)
-
-def metric_card(col, label, value):
-    col.markdown(f"""
-    <div class="metric-card">
-        <p class="metric-label">{label}</p>
-        <p class="metric-value">{value}</p>
-    </div>
-    """, unsafe_allow_html=True)
-
-metric_card(col1, "Promotores activos", f"{int(kpis[0] or 0):,}")
-metric_card(col2, "Horas trabajadas",   f"{kpis[1] or 0:,.1f}")
-metric_card(col3, "Promedio hrs/día",   f"{kpis[2] or 0:.1f}")
-metric_card(col4, "Ausencias",          f"{int(kpis[3] or 0):,}")
-metric_card(col5, "PDV visitados",      f"{int(kpis[5] or 0):,}")
-
-st.divider()
-
-# Tendencia
-st.markdown('<p class="section-title">Tendencia diaria</p>', unsafe_allow_html=True)
-
-with st.spinner("Cargando tendencia..."):
-    df_tend = tendencia_diaria(cliente_id, fecha_ini, fecha_fin, canal_sel)
-
-if not df_tend.empty:
-    tab1, tab2, tab3 = st.tabs(["Horas promedio", "Promotores activos", "Ausencias"])
-
-    with tab1:
-        fig = px.line(df_tend, x="dia", y="horas_promedio",
-                      markers=True, title="Horas promedio por día")
-        fig.update_traces(line_color="#0057FF")
-        fig.update_layout(xaxis_title="", yaxis_title="Horas", height=350)
-        st.plotly_chart(fig, use_container_width=True)
-
-    with tab2:
-        fig = px.bar(df_tend, x="dia", y="promotores",
-                     title="Promotores activos por día", color_discrete_sequence=["#0057FF"])
-        fig.update_layout(xaxis_title="", yaxis_title="Promotores", height=350)
-        st.plotly_chart(fig, use_container_width=True)
-
-    with tab3:
-        fig = px.bar(df_tend, x="dia", y="ausencias",
-                     title="Ausencias por día", color_discrete_sequence=["#FF4B4B"])
-        fig.update_layout(xaxis_title="", yaxis_title="Ausencias", height=350)
-        st.plotly_chart(fig, use_container_width=True)
-else:
+if df.empty:
     st.info("Sin datos para el período seleccionado.")
+    st.stop()
 
-    # ── INCIDENCIAS ──────────────────────────────────────
+# ─────────────────────────────────────────
+# SECCIÓN GENERAL
+# ─────────────────────────────────────────
+st.markdown('<p class="section-title">Resumen general</p>', unsafe_allow_html=True)
+
+total_plan       = int(df["plan"].sum())
+total_real       = int(df["realizadas_total"].sum())
+total_promotores = df["usuario_id"].nunique()
+pct_visitas_gen  = round(total_real * 100 / total_plan, 0) if total_plan else 0
+
+# Calcular promedios globales ponderados
+avg_seg_inicio  = df[df["hora_inicio"].notna()]["hora_inicio"].apply(
+    lambda x: int(x[:2])*3600 + int(x[3:5])*60 if x and len(x)==5 else None
+).mean()
+avg_seg_fin     = df[df["hora_fin"].notna()]["hora_fin"].apply(
+    lambda x: int(x[:2])*3600 + int(x[3:5])*60 if x and len(x)==5 else None
+).mean()
+
+def seg_to_hhmm(seg):
+    if seg is None or pd.isna(seg): return "—"
+    s = int(seg)
+    return f"{s//3600:02d}:{(s%3600)//60:02d}"
+
+pct_inicio_gen = round(df["pct_inicio"].mean(), 0) if not df["pct_inicio"].isna().all() else 0
+pct_fin_gen    = round(df["pct_fin"].mean(), 0)    if not df["pct_fin"].isna().all() else 0
+
+col1, col2, col3, col4, col5, col6 = st.columns(6)
+metric_card(col1, "Promotores activos",  f"{total_promotores:,}")
+metric_card(col2, "Hora inicio prom",    seg_to_hhmm(avg_seg_inicio),
+            sub=f"{int(pct_inicio_gen)}% cump.")
+metric_card(col3, "Hora fin prom",       seg_to_hhmm(avg_seg_fin),
+            sub=f"{int(pct_fin_gen)}% ≥8hrs")
+metric_card(col4, "Visitas planeadas",   f"{total_plan:,}")
+metric_card(col5, "Visitas realizadas",  f"{total_real:,}",
+            sub=f"{int(pct_visitas_gen)}% cump.")
+metric_card(col6, "Ausencias",           f"{ausencias:,}")
+
 st.divider()
-st.markdown('<p class="section-title">Incidencias</p>', unsafe_allow_html=True)
 
-with st.spinner("Cargando incidencias..."):
-    df_inc = incidencias_resumen(cliente_id, fecha_ini, fecha_fin)
+# Segunda fila de KPIs de tiempos
+def safe_int(v):
+    try:
+        return int(v) if __import__('pandas').notna(v) else 0
+    except:
+        return 0
 
-if not df_inc.empty:
-    # Mapear grupos
-    df_inc["grupo"] = df_inc["incidencia_norm"].map(INCIDENCIAS_MAP).fillna("Otro")
-    df_grupo = df_inc.groupby("grupo")["total"].sum().reset_index()
-    df_grupo["color"] = df_grupo["grupo"].map(COLORES_INCIDENCIA)
+def hhmm_to_min(x):
+    try:
+        if not x or not isinstance(x, str) or len(x) != 5:
+            return None
+        return int(x[:2]) * 60 + int(x[3:5])
+    except:
+        return None
 
-    col1, col2 = st.columns([1, 2])
+avg_lab  = df["t_laborado"].apply(hhmm_to_min).mean()
+avg_tras = df["t_traslado"].apply(hhmm_to_min).mean()
+avg_pdv  = df["t_pdv"].apply(hhmm_to_min).mean()
+avg_prom = df["visitas_prom"].mean()
 
-    with col1:
-        fig = go.Figure(go.Pie(
-            labels=df_grupo["grupo"],
-            values=df_grupo["total"],
-            marker_colors=df_grupo["color"].tolist(),
-            hole=0.5,
-            textinfo="label+percent"
-        ))
-        fig.update_layout(
-            title="Distribución por grupo",
-            showlegend=False,
-            height=320,
-            margin=dict(t=40, b=0, l=0, r=0)
-        )
-        st.plotly_chart(fig, use_container_width=True)
+def min_to_hhmm(mins):
+    if mins is None or pd.isna(mins): return "—"
+    m = int(mins)
+    return f"{m//60:02d}:{m%60:02d}"
 
-    with col2:
-        # Top incidencias detalle
-        df_top = df_inc.head(10).copy()
-        df_top["color"] = df_top["grupo"].map(COLORES_INCIDENCIA)
-        fig = px.bar(
-            df_top, x="total", y="incidencia_norm",
-            orientation="h",
-            color="grupo",
-            color_discrete_map=COLORES_INCIDENCIA,
-            title="Top 10 incidencias"
-        )
-        fig.update_layout(
-            xaxis_title="", yaxis_title="",
-            height=320, showlegend=False,
-            yaxis=dict(autorange="reversed")
-        )
-        st.plotly_chart(fig, use_container_width=True)
+col1, col2, col3, col4 = st.columns(4)
+metric_card(col1, "T. laborado prom",   min_to_hhmm(avg_lab))
+metric_card(col2, "T. traslados prom",  min_to_hhmm(avg_tras),
+            sub=f"{int(df['pct_traslado'].mean() or 0)}% de jornada")
+metric_card(col3, "T. en PDV prom",     min_to_hhmm(avg_pdv),
+            sub=f"{int(df['pct_pdv'].mean() or 0)}% de jornada")
+metric_card(col4, "Visitas prom/día",   f"{avg_prom:.1f}")
 
-# ── RUTAS ─────────────────────────────────────────────
 st.divider()
-st.markdown('<p class="section-title">Rutas</p>', unsafe_allow_html=True)
 
-with st.spinner("Cargando rutas..."):
-    df_rutas = rutas_resumen(cliente_id, fecha_ini, fecha_fin, canal_sel)
+# ─────────────────────────────────────────
+# DETALLE POR EQUIPO
+# ─────────────────────────────────────────
+st.markdown('<p class="section-title">Detalle por equipo</p>', unsafe_allow_html=True)
 
-if not df_rutas.empty:
-    col1, col2, col3 = st.columns(3)
-    metric_card(col1, "Total rutas",       f"{len(df_rutas):,}")
-    metric_card(col2, "Total promotores",  f"{int(df_rutas['promotores'].sum()):,}")
-    metric_card(col3, "Días activos prom", f"{df_rutas['dias_activos'].mean():.1f}")
+df_equipo = df.groupby("entidad").agg(
+    promotores    =("usuario_id",       "nunique"),
+    plan          =("plan",             "sum"),
+    realizadas    =("realizadas_total", "sum"),
+).reset_index()
+df_equipo["pct_visitas"] = (df_equipo["realizadas"] / df_equipo["plan"] * 100).round(0)
 
-    st.divider()
+# Calcular promedios de tiempos por equipo desde df
+for col_t in ["hora_inicio","hora_fin","t_laborado","t_traslado","t_pdv"]:
+    df_equipo[col_t] = df.groupby("entidad")[col_t].apply(
+        lambda s: min_to_hhmm(s.apply(hhmm_to_min).mean())
+    ).values
 
-    tab1, tab2 = st.tabs(["Promotores por ruta", "Ausencias por ruta"])
+df_equipo["pct_inicio"] = df.groupby("entidad")["pct_inicio"].mean().round(0).values
+df_equipo["pct_fin"]    = df.groupby("entidad")["pct_fin"].mean().round(0).values
+df_equipo["pct_traslado"] = df.groupby("entidad")["pct_traslado"].mean().round(0).values
+df_equipo["pct_pdv"]    = df.groupby("entidad")["pct_pdv"].mean().round(0).values
+df_equipo["visitas_prom"] = df.groupby("entidad")["visitas_prom"].mean().round(1).values
 
-    with tab1:
-        fig = px.bar(
-            df_rutas.head(20), x="ruta", y="promotores",
-            color="entidad", title="Promotores activos por ruta",
-            height=380
-        )
-        fig.update_layout(xaxis_title="", yaxis_title="Promotores")
-        st.plotly_chart(fig, use_container_width=True)
+# Renderizar tabla HTML de equipo
+def render_tabla_equipo(df_eq):
+    rows = ""
+    for _, r in df_eq.iterrows():
+        pct_v = safe_int(r["pct_visitas"]) if pd.notna(r["pct_visitas"]) else 0
+        pct_i = safe_int(r["pct_inicio"])  if pd.notna(r["pct_inicio"])  else 0
+        pct_f = safe_int(r["pct_fin"])     if pd.notna(r["pct_fin"])     else 0
+        rows += f"""
+        <tr style="border-bottom:1px solid #F3F4F6">
+          <td style="padding:8px;font-weight:500">{r['entidad']}</td>
+          <td style="padding:8px;text-align:center">{r['promotores']}</td>
+          <td style="padding:8px;text-align:center">
+            <b>{r['hora_inicio']}</b>
+            <span class="badge {'badge-green' if pct_i>=70 else 'badge-yellow' if pct_i>=40 else 'badge-red'}">{pct_i}%</span>
+          </td>
+          <td style="padding:8px;text-align:center">
+            {r['hora_fin']}
+            <span class="badge {'badge-green' if pct_f>=50 else 'badge-yellow' if pct_f>=25 else 'badge-red'}">{pct_f}%</span>
+          </td>
+          <td style="padding:8px;text-align:center">{r['t_laborado']}</td>
+          <td style="padding:8px;text-align:center">
+            {r['t_traslado']}
+            <span style="font-size:0.7rem;color:#9CA3AF">{safe_int(r['pct_traslado'] or 0)}%</span>
+          </td>
+          <td style="padding:8px;text-align:center">
+            {r['t_pdv']}
+            <span style="font-size:0.7rem;color:#9CA3AF">{safe_int(r['pct_pdv'] or 0)}%</span>
+          </td>
+          <td style="padding:8px;text-align:center">{r['visitas_prom']}</td>
+          <td style="padding:8px;text-align:center">{safe_int(r['plan'])}</td>
+          <td style="padding:8px;text-align:center">{safe_int(r['realizadas'])}</td>
+          <td style="padding:8px;text-align:center">
+            <span class="badge {'badge-green' if pct_v>=80 else 'badge-yellow' if pct_v>=60 else 'badge-red'}">{pct_v}%</span>
+          </td>
+        </tr>"""
+    return f"""
+    <table style="width:100%;border-collapse:collapse;font-size:0.82rem">
+      <thead>
+        <tr class="table-header" style="border-bottom:2px solid #E2E4E9">
+          <th style="padding:8px;text-align:left">Entidad</th>
+          <th style="padding:8px;text-align:center">Promotores</th>
+          <th style="padding:8px;text-align:center">Inicio</th>
+          <th style="padding:8px;text-align:center">Fin</th>
+          <th style="padding:8px;text-align:center">T. Laborado</th>
+          <th style="padding:8px;text-align:center">T. Traslados</th>
+          <th style="padding:8px;text-align:center">T. x PDV</th>
+          <th style="padding:8px;text-align:center">V. prom.</th>
+          <th style="padding:8px;text-align:center">Plan</th>
+          <th style="padding:8px;text-align:center">Realizadas</th>
+          <th style="padding:8px;text-align:center">Cump.</th>
+        </tr>
+      </thead>
+      <tbody>{rows}</tbody>
+    </table>"""
 
-    with tab2:
-        fig = px.bar(
-            df_rutas.head(20), x="ruta", y="ausencias",
-            color="entidad", title="Ausencias por ruta",
-            color_discrete_sequence=["#EF4444"],
-            height=380
-        )
-        fig.update_layout(xaxis_title="", yaxis_title="Ausencias")
-        st.plotly_chart(fig, use_container_width=True)
+st.markdown(render_tabla_equipo(df_equipo), unsafe_allow_html=True)
 
-    st.dataframe(
-        df_rutas[["ruta", "entidad", "promotores", "dias_activos", "horas_promedio", "ausencias"]],
-        width='stretch',
-        hide_index=True
-    )
-
-# ------- EXPORTAR EXCEL ----------
 st.divider()
-st.markdown('<p class="section-title">Exportar datos</p>', unsafe_allow_html=True)
+
+# ─────────────────────────────────────────
+# DETALLE POR USUARIO
+# ─────────────────────────────────────────
+st.markdown('<p class="section-title">Detalle por usuario</p>', unsafe_allow_html=True)
+
+entidades = sorted(df["entidad"].unique().tolist())
+
+for entidad in entidades:
+    df_ent = df[df["entidad"] == entidad].copy()
+    total_ent = df_ent["realizadas_total"].sum()
+    plan_ent  = df_ent["plan"].sum()
+    pct_ent   = round(total_ent * 100 / plan_ent, 0) if plan_ent else 0
+
+    with st.expander(f"📍 {entidad}  —  {len(df_ent)} promotores  ·  {int(total_ent)}/{int(plan_ent)} visitas  ·  {int(pct_ent)}% cump."):
+        rows = ""
+        for _, r in df_ent.iterrows():
+            pct_v = safe_int(r["pct_visitas"]) if pd.notna(r["pct_visitas"]) else 0
+            pct_i = safe_int(r["pct_inicio"])  if pd.notna(r["pct_inicio"])  else 0
+            pct_f = safe_int(r["pct_fin"])     if pd.notna(r["pct_fin"])     else 0
+            # Puesto: S si username es PRC + número corto (supervisores)
+            es_sup = bool(r["username"] and
+                          __import__('re').match(r'^PRC0\d{2}$', str(r["username"])))
+            puesto = "S" if es_sup else "—"
+            rows += f"""
+            <tr style="border-bottom:1px solid #F3F4F6;
+                       {'background:#F0F7FF' if es_sup else ''}">
+              <td style="padding:8px;font-family:monospace;font-size:0.8rem">{r['username']}</td>
+              <td style="padding:8px">{r['user_real_name']}</td>
+              <td style="padding:8px;text-align:center;color:#6B7280">{puesto}</td>
+              <td style="padding:8px;text-align:center">
+                <b>{r['hora_inicio'] or '—'}</b>
+                <span class="badge {'badge-green' if pct_i>=70 else 'badge-yellow' if pct_i>=40 else 'badge-red'}">{pct_i}%</span>
+              </td>
+              <td style="padding:8px;text-align:center">
+                {r['hora_fin'] or '—'}
+                <span class="badge {'badge-green' if pct_f>=50 else 'badge-yellow' if pct_f>=25 else 'badge-red'}">{pct_f}%</span>
+              </td>
+              <td style="padding:8px;text-align:center">{r['t_laborado'] or '—'}</td>
+              <td style="padding:8px;text-align:center">
+                {r['t_traslado'] or '—'}
+                <span style="font-size:0.7rem;color:#9CA3AF">{safe_int(r['pct_traslado'] or 0)}%</span>
+              </td>
+              <td style="padding:8px;text-align:center">
+                {r['t_pdv'] or '—'}
+                <span style="font-size:0.7rem;color:#9CA3AF">{safe_int(r['pct_pdv'] or 0)}%</span>
+              </td>
+              <td style="padding:8px;text-align:center">{r['visitas_prom'] or '—'}</td>
+              <td style="padding:8px;text-align:center">{safe_int(r['plan'])}</td>
+              <td style="padding:8px;text-align:center">{safe_int(r['realizadas_total'])}</td>
+              <td style="padding:8px;text-align:center">
+                <span class="badge {'badge-green' if pct_v>=80 else 'badge-yellow' if pct_v>=60 else 'badge-red'}">{pct_v}%</span>
+              </td>
+            </tr>"""
+
+        st.markdown(f"""
+        <table style="width:100%;border-collapse:collapse;font-size:0.8rem">
+          <thead>
+            <tr class="table-header" style="border-bottom:2px solid #E2E4E9">
+              <th style="padding:8px;text-align:left">Usuario</th>
+              <th style="padding:8px;text-align:left">Nombre</th>
+              <th style="padding:8px;text-align:center">Puesto</th>
+              <th style="padding:8px;text-align:center">Inicio</th>
+              <th style="padding:8px;text-align:center">Fin</th>
+              <th style="padding:8px;text-align:center">T. Laborado</th>
+              <th style="padding:8px;text-align:center">T. Traslados</th>
+              <th style="padding:8px;text-align:center">T. x PDV</th>
+              <th style="padding:8px;text-align:center">V. prom.</th>
+              <th style="padding:8px;text-align:center">Plan</th>
+              <th style="padding:8px;text-align:center">Realizadas</th>
+              <th style="padding:8px;text-align:center">Cump.</th>
+            </tr>
+          </thead>
+          <tbody>{rows}</tbody>
+        </table>""", unsafe_allow_html=True)
+
+st.divider()
+
+# ─────────────────────────────────────────
+# EXPORTAR
+# ─────────────────────────────────────────
+st.markdown('<p class="section-title">Exportar</p>', unsafe_allow_html=True)
 
 if st.button("📥 Generar Excel"):
-    with st.spinner("Generando archivo..."):
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        # General
+        pd.DataFrame([{
+            "Promotores activos":   total_promotores,
+            "Visitas planeadas":    total_plan,
+            "Visitas realizadas":   total_real,
+            "% Cumplimiento":       pct_visitas_gen,
+            "Ausencias":            ausencias,
+        }]).to_excel(writer, sheet_name="Resumen general", index=False)
+        # Por equipo
+        df_equipo.to_excel(writer, sheet_name="Detalle por equipo", index=False)
+        # Por usuario
+        df.to_excel(writer, sheet_name="Detalle por usuario", index=False)
 
-        # KPIs
-        df_kpis = pd.DataFrame([{
-            "Promotores activos":     int(kpis[0] or 0),
-            "Total horas trabajadas": float(kpis[1] or 0),
-            "Promedio horas/día":     float(kpis[2] or 0),
-            "Ausencias":              int(kpis[3] or 0),
-            "Días trabajados":        int(kpis[4] or 0),
-            "PDV visitados":          int(kpis[5] or 0),
-        }])
-
-        # Tendencia
-        df_tend_export = df_tend.rename(columns={
-            "dia": "Día", "promotores": "Promotores",
-            "horas_promedio": "Horas promedio", "ausencias": "Ausencias"
-        })
-
-        # Resumen incidencias
-        df_grupo_export = df_inc.copy()
-        df_grupo_export["Grupo"] = df_grupo_export["incidencia_norm"].map(INCIDENCIAS_MAP).fillna("Otro")
-        df_grupo_export = df_grupo_export.rename(columns={
-            "incidencia_norm": "Incidencia", "total": "Total"
-        })[["Incidencia", "Total", "Grupo"]]
-
-        # Rutas
-        df_rutas_export = df_rutas.rename(columns={
-            "ruta": "Ruta", "entidad": "Entidad", "promotores": "Promotores",
-            "dias_activos": "Días activos", "horas_promedio": "Horas promedio",
-            "ausencias": "Ausencias"
-        })
-
-        # Detalle incidencias
-        df_detalle_inc = detalle_incidencias(cliente_id, fecha_ini, fecha_fin)
-        df_detalle_inc["Grupo"] = df_detalle_inc["incidencia_normalizada"].map(INCIDENCIAS_MAP).fillna("Otro")
-
-        # Detalle jornada
-        df_detalle_jor = detalle_jornada(cliente_id, fecha_ini, fecha_fin)
-
-        # Detalle actividades
-        df_detalle_act = detalle_actividades(cliente_id, fecha_ini, fecha_fin)
-
-        buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-            df_kpis.to_excel(writer,            sheet_name="KPIs",                index=False)
-            df_tend_export.to_excel(writer,     sheet_name="Tendencia diaria",    index=False)
-            df_grupo_export.to_excel(writer,    sheet_name="Resumen incidencias", index=False)
-            df_detalle_inc.to_excel(writer,     sheet_name="Detalle incidencias", index=False)
-            df_detalle_jor.to_excel(writer,     sheet_name="Detalle jornada",     index=False)
-            df_detalle_act.to_excel(writer,     sheet_name="Detalle actividades", index=False)
-            df_rutas_export.to_excel(writer,    sheet_name="Rutas",               index=False)
-
-        buffer.seek(0)
-
+    buffer.seek(0)
     st.download_button(
-        label="⬇️ Descargar Excel",
+        "⬇️ Descargar Excel",
         data=buffer,
         file_name=f"operacion_{cliente_sel}_{fecha_ini}_{fecha_fin}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
-# ── ITINERARIO ────────────────────────────────────────
-st.divider()
-st.markdown('<p class="section-title">Itinerario detallado por promotor</p>',
-            unsafe_allow_html=True)
-
-with st.spinner("Cargando itinerario..."):
-    df_itin = itinerario_promotor(cliente_id, fecha_ini, fecha_fin)
-
-if not df_itin.empty:
-    promotores_disp = ["Todos"] + sorted(df_itin["promotor"].dropna().unique().tolist())
-    promotor_sel = st.selectbox("Filtrar por promotor", promotores_disp)
-    if promotor_sel != "Todos":
-        df_itin = df_itin[df_itin["promotor"] == promotor_sel]
-
-    fechas_disp = ["Todas"] + sorted(df_itin["fecha"].astype(str).unique().tolist())
-    fecha_sel_itin = st.selectbox("Filtrar por día", fechas_disp)
-    if fecha_sel_itin != "Todas":
-        df_itin = df_itin[df_itin["fecha"].astype(str) == fecha_sel_itin]
-
-    col1, col2, col3, col4 = st.columns(4)
-    metric_card(col1, "Días con actividad",  f"{len(df_itin):,}")
-    metric_card(col2, "Total visitas",       f"{int(df_itin['total_visitas'].sum()):,}")
-    metric_card(col3, "Visitas fuera ruta",  f"{int(df_itin['visitas_fuera_ruta'].sum()):,}")
-    metric_card(col4, "PDVs visitados",      f"{int(df_itin['pdvs_visitados'].sum()):,}")
-
-    st.divider()
-
-    st.dataframe(
-        df_itin.rename(columns={
-            "fecha":             "Fecha",
-            "promotor":          "Promotor",
-            "ruta":              "Ruta",
-            "entidad":           "Entidad",
-            "hora_entrada":      "Hora entrada",
-            "hora_salida":       "Hora salida",
-            "minutos":           "Minutos",
-            "total_visitas":     "Total visitas",
-            "visitas_planeadas": "En ruta",
-            "visitas_fuera_ruta":"Fuera de ruta",
-            "pdvs_visitados":    "PDVs",
-        }),
-        hide_index=True,
-        width="stretch",
-    )
-
-    buffer = io.BytesIO()
-    df_itin.to_excel(buffer, index=False)
-    buffer.seek(0)
-    st.download_button(
-        "⬇️ Descargar itinerario Excel",
-        data=buffer,
-        file_name=f"itinerario_{cliente_sel}_{fecha_ini}_{fecha_fin}.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-else:
-    st.info("Sin datos de itinerario para el período seleccionado.")
