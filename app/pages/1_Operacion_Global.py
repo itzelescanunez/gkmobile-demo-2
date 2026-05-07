@@ -552,3 +552,180 @@ if st.button("📥 Generar Excel"):
         file_name=f"operacion_{cliente_sel}_{fecha_ini}_{fecha_fin}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+st.divider()
+
+# ─────────────────────────────────────────
+# TENDENCIA DIARIA
+# ─────────────────────────────────────────
+st.markdown('<p class="section-title">Tendencia diaria</p>', unsafe_allow_html=True)
+
+@st.cache_data(ttl=300)
+def tendencia_diaria(cliente_id, fecha_ini, fecha_fin):
+    return con.execute(f"""
+        WITH usuarios_sistema AS (
+            SELECT usuario_id FROM (
+                SELECT usuario_id, CAST(fecha_planeada AS DATE) as dia, COUNT(*) as cnt
+                FROM actividad
+                WHERE cliente_id = {cliente_id}
+                  AND CAST(fecha_planeada AS DATE) BETWEEN '{fecha_ini}' AND '{fecha_fin}'
+                GROUP BY usuario_id, CAST(fecha_planeada AS DATE)
+            )
+            GROUP BY usuario_id HAVING MAX(cnt) > 50
+            UNION
+            SELECT u.id FROM usuario u
+            WHERE u.username LIKE '%.%' AND u.cliente_id = {cliente_id}
+        )
+        SELECT
+            CAST(a.fecha_planeada AS DATE)              AS dia,
+            COUNT(DISTINCT a.usuario_id)                AS promotores,
+            COUNT(*)                                    AS planeadas,
+            COUNT(TRY_CAST(a.fecha_real_inicio AS TIMESTAMP)) AS realizadas,
+            ROUND(COUNT(TRY_CAST(a.fecha_real_inicio AS TIMESTAMP)) * 100.0 /
+                  NULLIF(COUNT(*), 0), 1)               AS pct_cumplimiento
+        FROM actividad a
+        WHERE a.cliente_id = {cliente_id}
+          AND CAST(a.fecha_planeada AS DATE) BETWEEN '{fecha_ini}' AND '{fecha_fin}'
+          AND a.usuario_id NOT IN (SELECT usuario_id FROM usuarios_sistema)
+        GROUP BY CAST(a.fecha_planeada AS DATE)
+        ORDER BY dia
+    """).df()
+
+df_tend = tendencia_diaria(cliente_id, fecha_ini, fecha_fin)
+
+if not df_tend.empty:
+    tab1, tab2, tab3 = st.tabs(["Promotores activos", "Cumplimiento de visitas", "Visitas plan vs real"])
+
+    with tab1:
+        fig = px.bar(df_tend, x="dia", y="promotores",
+                     color_discrete_sequence=["#0057FF"], height=320)
+        fig.update_layout(xaxis_title="", yaxis_title="Promotores",
+                          plot_bgcolor="white", margin=dict(t=20, b=0))
+        fig.update_xaxes(showgrid=False)
+        fig.update_yaxes(showgrid=True, gridcolor="#F3F4F6")
+        st.plotly_chart(fig, use_container_width=True)
+
+    with tab2:
+        fig = px.line(df_tend, x="dia", y="pct_cumplimiento",
+                      markers=True, height=320)
+        fig.update_traces(line_color="#22C55E", marker_color="#22C55E")
+        fig.add_hline(y=80, line_dash="dash", line_color="#EF4444",
+                      annotation_text="80% objetivo")
+        fig.update_layout(xaxis_title="", yaxis_title="% Cumplimiento",
+                          plot_bgcolor="white", margin=dict(t=20, b=0))
+        fig.update_xaxes(showgrid=False)
+        fig.update_yaxes(showgrid=True, gridcolor="#F3F4F6", range=[0, 110])
+        st.plotly_chart(fig, use_container_width=True)
+
+    with tab3:
+        fig = px.bar(df_tend, x="dia", y=["planeadas", "realizadas"],
+                     barmode="group", height=320,
+                     color_discrete_map={"planeadas": "#CBD5E1", "realizadas": "#0057FF"})
+        fig.update_layout(xaxis_title="", yaxis_title="Visitas",
+                          plot_bgcolor="white", margin=dict(t=20, b=0),
+                          legend=dict(title=""))
+        fig.update_xaxes(showgrid=False)
+        fig.update_yaxes(showgrid=True, gridcolor="#F3F4F6")
+        st.plotly_chart(fig, use_container_width=True)
+
+st.divider()
+
+# ─────────────────────────────────────────
+# ITINERARIO DETALLADO
+# ─────────────────────────────────────────
+st.markdown('<p class="section-title">Itinerario detallado por promotor</p>',
+            unsafe_allow_html=True)
+
+@st.cache_data(ttl=300)
+def itinerario_promotor(cliente_id, fecha_ini, fecha_fin):
+    return con.execute(f"""
+        WITH usuarios_sistema AS (
+            SELECT usuario_id FROM (
+                SELECT usuario_id, CAST(fecha_planeada AS DATE) as dia, COUNT(*) as cnt
+                FROM actividad
+                WHERE cliente_id = {cliente_id}
+                  AND CAST(fecha_planeada AS DATE) BETWEEN '{fecha_ini}' AND '{fecha_fin}'
+                GROUP BY usuario_id, CAST(fecha_planeada AS DATE)
+            )
+            GROUP BY usuario_id HAVING MAX(cnt) > 50
+            UNION
+            SELECT u.id FROM usuario u
+            WHERE u.username LIKE '%.%' AND u.cliente_id = {cliente_id}
+        )
+        SELECT
+            CAST(a.fecha_planeada AS DATE)                  AS fecha,
+            u.username,
+            u.user_real_name                                AS promotor,
+            COALESCE(c.entidad, 'Sin entidad')              AS entidad,
+            LPAD(CAST(CAST(FLOOR(MIN(EPOCH(TRY_CAST(a.fecha_real_inicio AS TIMESTAMP)) % 86400)) AS INTEGER) AS VARCHAR),2,'0') || ':' ||
+            LPAD(CAST(CAST(FLOOR((MIN(EPOCH(TRY_CAST(a.fecha_real_inicio AS TIMESTAMP)) % 86400) % 3600) / 60) AS INTEGER) AS VARCHAR),2,'0') AS hora_entrada,
+            LPAD(CAST(CAST(FLOOR(MAX(EPOCH(TRY_CAST(a.fecha_real_final AS TIMESTAMP)) % 86400)) AS INTEGER) AS VARCHAR),2,'0') || ':' ||
+            LPAD(CAST(CAST(FLOOR((MAX(EPOCH(TRY_CAST(a.fecha_real_final AS TIMESTAMP)) % 86400) % 3600) / 60) AS INTEGER) AS VARCHAR),2,'0') AS hora_salida,
+            COUNT(*)                                        AS visitas_planeadas,
+            COUNT(TRY_CAST(a.fecha_real_inicio AS TIMESTAMP)) AS visitas_realizadas,
+            COUNT(DISTINCT a.punto_venta_id)                AS pdvs_visitados,
+            COUNT(CASE WHEN TRY_CAST(a.is_no_planeada AS INT) = 1
+                  THEN 1 END)                               AS fuera_de_ruta
+        FROM actividad a
+        LEFT JOIN usuario u   ON u.id = a.usuario_id
+        LEFT JOIN (
+            SELECT id, FIRST(entidad ORDER BY entidad NULLS LAST) AS entidad
+            FROM cuadrilla
+            WHERE entidad IS NOT NULL AND TRIM(entidad) != ''
+            GROUP BY id
+        ) c ON c.id = TRY_CAST(a.cuadrilla_id AS DOUBLE)
+        WHERE a.cliente_id = {cliente_id}
+          AND CAST(a.fecha_planeada AS DATE) BETWEEN '{fecha_ini}' AND '{fecha_fin}'
+          AND a.usuario_id NOT IN (SELECT usuario_id FROM usuarios_sistema)
+        GROUP BY CAST(a.fecha_planeada AS DATE), a.usuario_id,
+                 u.username, u.user_real_name, c.entidad
+        ORDER BY fecha, u.username
+    """).df()
+
+df_itin = itinerario_promotor(cliente_id, fecha_ini, fecha_fin)
+
+if not df_itin.empty:
+    col1, col2 = st.columns(2)
+    promotores_disp = ["Todos"] + sorted(df_itin["promotor"].dropna().unique().tolist())
+    promotor_sel    = col1.selectbox("Filtrar por promotor", promotores_disp)
+    fechas_disp     = ["Todas"] + sorted(df_itin["fecha"].astype(str).unique().tolist())
+    fecha_sel_itin  = col2.selectbox("Filtrar por día", fechas_disp)
+
+    if promotor_sel != "Todos":
+        df_itin = df_itin[df_itin["promotor"] == promotor_sel]
+    if fecha_sel_itin != "Todas":
+        df_itin = df_itin[df_itin["fecha"].astype(str) == fecha_sel_itin]
+
+    col1, col2, col3, col4 = st.columns(4)
+    metric_card(col1, "Días con actividad",  f"{len(df_itin):,}")
+    metric_card(col2, "Visitas planeadas",   f"{int(df_itin['visitas_planeadas'].sum()):,}")
+    metric_card(col3, "Visitas realizadas",  f"{int(df_itin['visitas_realizadas'].sum()):,}")
+    metric_card(col4, "Fuera de ruta",       f"{int(df_itin['fuera_de_ruta'].sum()):,}")
+
+    st.divider()
+
+    st.dataframe(
+        df_itin.rename(columns={
+            "fecha":              "Fecha",
+            "username":           "Usuario",
+            "promotor":           "Promotor",
+            "entidad":            "Entidad",
+            "hora_entrada":       "Entrada",
+            "hora_salida":        "Salida",
+            "visitas_planeadas":  "Planeadas",
+            "visitas_realizadas": "Realizadas",
+            "pdvs_visitados":     "PDVs",
+            "fuera_de_ruta":      "Fuera ruta",
+        }),
+        hide_index=True,
+        use_container_width=True,
+    )
+
+    buffer = io.BytesIO()
+    df_itin.to_excel(buffer, index=False)
+    buffer.seek(0)
+    st.download_button(
+        "⬇️ Descargar itinerario Excel",
+        data=buffer,
+        file_name=f"itinerario_{cliente_sel}_{fecha_ini}_{fecha_fin}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
