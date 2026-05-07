@@ -446,7 +446,15 @@ for entidad in entidades:
     plan_ent  = df_ent["plan"].sum()
     pct_ent   = round(total_ent * 100 / plan_ent, 0) if plan_ent else 0
 
-    with st.expander(f"📍 {entidad}  —  {len(df_ent)} promotores  ·  {int(total_ent)}/{int(plan_ent)} visitas  ·  {int(pct_ent)}% cump."):
+    # Badge color según cumplimiento
+    if pct_ent >= 80:
+        icono = "🟢"
+    elif pct_ent >= 60:
+        icono = "🟡"
+    else:
+        icono = "🔴"
+
+    with st.expander(f"{icono} {entidad}  —  {len(df_ent)} promotores  ·  {int(total_ent)}/{int(plan_ent)} visitas  ·  {int(pct_ent)}% cump."):
         rows = ""
         for _, r in df_ent.iterrows():
             pct_v = safe_int(r["pct_visitas"]) if pd.notna(r["pct_visitas"]) else 0
